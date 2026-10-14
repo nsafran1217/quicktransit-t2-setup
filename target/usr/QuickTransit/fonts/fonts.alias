@@ -1,0 +1,11 @@
+! QuickTransit font aliases (first on the X font path, see README).
+! IRIX's scalable Type1 fonts can't be used: T2's FreeType 2.14.3 / ia64 glibc
+! memchr crashes on any PFA (it took down Xorg).  Performer's GUI asks for
+! utopia-bold at 12/14/16; IRIX only ships bitmap utopia-medium, so map to those.
+-adobe-utopia-bold-r-normal--12-120-75-75-p-67-iso8859-1    -adobe-utopia-medium-r-normal--12-120-75-75-p-67-iso8859-1
+-adobe-utopia-bold-r-normal--14-100-100-100-p-75-iso8859-1  -adobe-utopia-medium-r-normal--14-100-100-100-p-75-iso8859-1
+-adobe-utopia-bold-r-normal--15-140-75-75-p-79-iso8859-1    -adobe-utopia-medium-r-normal--15-140-75-75-p-79-iso8859-1
+-adobe-utopia-bold-r-normal--16-120-100-100-p-91-iso8859-1  -adobe-utopia-medium-r-normal--17-120-100-100-p-91-iso8859-1
+-adobe-utopia-bold-r-normal--17-120-100-100-p-91-iso8859-1  -adobe-utopia-medium-r-normal--17-120-100-100-p-91-iso8859-1
+-adobe-utopia-bold-r-normal--19-140-100-100-p-105-iso8859-1 -adobe-utopia-medium-r-normal--19-140-100-100-p-105-iso8859-1
+-adobe-utopia-bold-r-normal--25-180-100-100-p-135-iso8859-1 -adobe-utopia-medium-r-normal--25-180-100-100-p-135-iso8859-1

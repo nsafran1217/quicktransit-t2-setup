@@ -1,0 +1,7 @@
+FEATURE quicktransit sgifd 1.000 11-apr-2005 uncounted 17E03C54DB19 \
+         VENDOR_STRING="<= 256 CPU, 0 PIPE" HOSTID=ANY vendor_info="<= \
+         256 CPU, 0 PIPE"
+
+FEATURE quicktransit sgifd 1.000 11-apr-2005 uncounted A0D0EDA8AD8F \
+         VENDOR_STRING="<= 8 CPU, 1-4 PIPE" HOSTID=ANY vendor_info="<= \
+         8 CPU, 1-4 PIPE"
