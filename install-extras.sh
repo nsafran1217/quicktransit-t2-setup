@@ -24,8 +24,9 @@ if [ $# = 1 ]; then
     [ -f "$DIST/desktop_eoe.idb" ] || die "$DIST: no desktop_eoe.idb"
 fi
 
-# --- Binary fixes 3-6 (fam, IRIX sh job control; see patch-quicktransit.py),
-# applied to the vendor binary along with the base ones.
+# --- Binary fixes 3-7 (fam, IRIX sh job control, GL byte arrays; see
+# patch-quicktransit.py), applied to the vendor binary along with the base
+# ones.
 echo ">>> QuickTransit binary: base + extra fixes"
 python3 -I "$HERE/patch-quicktransit.py" --extras $QT/bin/QuickTransit.orig $QT/bin/QuickTransit.new
 chmod 755 $QT/bin/QuickTransit.new

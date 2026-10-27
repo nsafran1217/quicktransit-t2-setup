@@ -108,7 +108,7 @@ Run demos from their own directory, as their `RUN` scripts do:
 |---|---|
 | Work | `sh`, `bash`, `uname`, `xterm`, `xclock`, `jot`, `4Dwm`, `winterm`, `touch`, `cp -p`, `tar` through pipes, `glxinfo`, `ivview`, `noof`, `bongo`, `glfalls`; demos `ideas`, `cycles`, `tex_cube` |
 | Work with options | `perfly`: needs `-m 0 -P 2` (see known issues). In its window, `p` cycles the frame phase and `f`/`F` change the target rate. |
-| Work with `install-extras.sh` | the desktop session (`irix-desktop`: toolchest, `fm`, background icons with their labels, Icon Catalog, Twilight and the other backgrounds); IRIS GL programs (buttonfly, atlantis, newton; see [docs/iris-gl.md](docs/iris-gl.md)); audio output from n32 programs (`sfplay`, `playaiff`, SDL programs; see [docs/irix-audio.md](docs/irix-audio.md)) |
+| Work with `install-extras.sh` | the desktop session (`irix-desktop`: toolchest, `fm`, background icons with their labels, Icon Catalog, Twilight and the other backgrounds); IRIS GL programs (buttonfly, atlantis, newton; see [docs/iris-gl.md](docs/iris-gl.md)); audio output from n32 programs (`sfplay`, `playaiff`, SDL programs; see [docs/irix-audio.md](docs/irix-audio.md)); SGUG SDL2 programs (`pt2-clone`, `ft2-clone`, `secondreality`) after `patch-sdl2-x11.py` (see [docs/sdl2.md](docs/sdl2.md)) |
 | Untested | bzflag, mirrors, MIDIblob, vroom, pointblank, mekton, Intersim/VisFly; imaging tools (`imgview`, `movieplayer`, ...) |
 | Don't work | IRIS GL programs without `install-extras.sh`: crash in `glXCreateContext` (see known issues). `flight` crashes even with it. `gr_osview` (reads kernel memory). |
 
@@ -122,6 +122,8 @@ More documentation:
   session (4Dwm, toolchest, fm)
 - [docs/iris-gl.md](docs/iris-gl.md): IRIS GL status and what's needed
 - [docs/irix-audio.md](docs/irix-audio.md): IRIX audio through ALSA
+- [docs/sdl2.md](docs/sdl2.md): SGUG SDL2 programs (`pt2-clone`,
+  `ft2-clone`, ...) and `patch-sdl2-x11.py`
 - [docs/qt-internals.md](docs/qt-internals.md): QuickTransit's syscall table,
   native-library binding and config options, for extending it
 
@@ -131,12 +133,13 @@ More documentation:
 |---|---|
 | `install.sh`, `uninstall.sh` | install / remove (run on the ia64 machine) |
 | `libstdc++.so.5.gz` | gcc 3.3 C++ runtime QuickTransit links against (from SLES 9 ia64) |
-| `patch-quicktransit.py` | binary fixes to the QuickTransit executable (problems 6 and 7; `--extras` adds E1) |
+| `patch-quicktransit.py` | binary fixes to the QuickTransit executable (problems 6 and 7; `--extras` adds E1 and E7) |
 | `target/` | files `install.sh` copies as-is to `/` |
 | `install-extras.sh`, `extras/target/` | optional desktop / IRIS GL / audio extras, and the files they copy to `/` |
 | `extras/src/` | sources of the prebuilt IRIX n32 libraries in `extras/target` (built with the SGUG gcc, `-shared -fPIC -static-libgcc`; see [docs/irix-gcc.md](docs/irix-gcc.md)), and of `libRCAudio.so`, which `install-extras.sh` builds |
+| `patch-sdl2-x11.py` | makes an SGUG SDL2 program or libSDL2 use QuickTransit's hooked X11 ([docs/sdl2.md](docs/sdl2.md)) |
 | `install-demos.sh`, `irix-dist-extract.py` | optional IRIX demos; the extractor is also used by `install-extras.sh` |
-| `docs/` | notes: IRIX desktop, IRIS GL, IRIX audio, IRIX gcc, QuickTransit internals |
+| `docs/` | notes: IRIX desktop, IRIS GL, IRIX audio, SDL2, IRIX gcc, QuickTransit internals |
 
 
 ## What the install puts on the system
@@ -174,7 +177,7 @@ Added or changed by `install.sh`:
 
 Added or changed by `install-extras.sh` (all removed by `uninstall.sh` too):
 - `/usr/QuickTransit/bin/QuickTransit`: re-patched from `QuickTransit.orig`
-  with `--extras` (md5 `9832521b…`)
+  with `--extras` (md5 `e163ec53…`)
 - `/usr/QuickTransit/bin/irix-desktop`: session launcher
 - `/usr/QuickTransit/lib/irix/lib32/libglxsync.so`, `libfakeci.so` (IRIX
   path `/usr/QuickTransit/lib32`): IRIX preload libraries
@@ -308,6 +311,14 @@ E6. **No audio.** SGI's libaudio drives the `hdsp` kernel driver, which
    To play several programs at once, `default` has to mix (dmix is enough,
    no sound server needed); a `plug` straight onto a `hw` device plays one
    at a time. See [docs/irix-audio.md](docs/irix-audio.md).
+
+E7. **GL byte vertex arrays exit the program** ("GLbindStub: swapCopy byte
+   stride unimplemented"). QuickTransit byte-swaps vertex arrays at draw
+   time and had no routine for `GL_BYTE` / `GL_UNSIGNED_BYTE` ones, which
+   need a copy but no swap. SDL2's OpenGL renderer (2.0.18 and later)
+   draws with `glColorPointer(4, GL_UNSIGNED_BYTE, ...)`. `patch-quicktransit.py
+   --extras` adds a byte copy in an unused function's space. SDL2 programs
+   also need `patch-sdl2-x11.py`; see [docs/sdl2.md](docs/sdl2.md).
 
 ## Known issues
 

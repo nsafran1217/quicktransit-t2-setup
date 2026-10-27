@@ -47,6 +47,7 @@ compare tree, plus a table for `SGI_SYSCONF` names.
 | `sysconf(_SC_CHILD_MAX)`, `_SC_OPEN_MAX`, `_SC_NGROUPS_MAX`, `_SC_ARG_MAX` | fixed constants 6, 16, 8, 131072 (POSIX minimums), regardless of host limits | IRIX `sh` ("too many jobs" with more than five background jobs) | CHILD_MAX → 1034, OPEN_MAX → 1024 patched (`--extras`). NGROUPS_MAX and ARG_MAX left (IRIX: 16, 262144). |
 | `ioctl(fd, 't' 97)` | "'t' subcall unsupported: 97" | `tar cf file` / `tar xf file` | open; use pipes |
 | `/dev/imon` (IRIX inode monitor) | not present | `fam` | none needed: fam polls |
+| GL vertex arrays of `GL_BYTE` / `GL_UNSIGNED_BYTE` (`RC_getSwapCopyFn`) | "Byte swapcopy unimplemented" / "swapCopy byte stride unimplemented", process exits | SDL2 ≥ 2.0.18 OpenGL renderer (`pt2-clone`, `ft2-clone`; see [sdl2.md](sdl2.md)) | patched (`--extras`): plain strided byte copy (fix 7) |
 | `attr_*` (1192–1200) | `IRIX_unsupported` | extended attributes | open, nothing seen using them |
 
 The guest-side workaround for missing GL/X behaviour (as opposed to

@@ -7,9 +7,10 @@ vendor binary; the output gets either set:
   base     (install.sh)        fixes 1-2: things that broke on current
                                 kernels / X servers.  With them QuickTransit
                                 works as it did on SLES 9.
-  --extras (install-extras.sh)  base plus fixes 3-6: QuickTransit bugs that
+  --extras (install-extras.sh)  base plus fixes 3-7: QuickTransit bugs that
                                 were there on SLES 9 too, found while getting
-                                fam, fm and the IRIX desktop session to run.
+                                fam, fm, the IRIX desktop session and SDL2
+                                programs to run.
 
 Usage:  patch-quicktransit.py [--extras] <vendor-binary> <out>
 
@@ -97,6 +98,27 @@ its job table from CHILD_MAX, so a script with more than five background
 jobs running at once dies with "too many jobs".  The IRIX desktop session
 (Xsession.dt) is such a script.  CHILD_MAX becomes 1034 (IRIX 6.5's default
 maxup) and OPEN_MAX 1024 (what QuickTransit reports for RLIMIT_NOFILE).
+
+Fix 7: GL_BYTE / GL_UNSIGNED_BYTE vertex arrays (extras)
+=========================================================
+gl{Color,Normal,TexCoord,Vertex}Pointer ask RC_getSwapCopyFn(size, type,
+stride) (0x400000000025e580) for the routine that copies the guest's
+big-endian array into a native buffer at draw time:
+fn(src, dst, count, stride).  It switches on type - GL_BYTE through two
+tables (stride 0: 0x4000000000753a28, else 0x4000000000753a80).  Both byte
+entries go to fwrite("GLbindStub: Byte swapcopy unimplemented" /
+"...swapCopy byte stride unimplemented") and exit(1), so any program that
+draws with glColorPointer(4, GL_UNSIGNED_BYTE, ...) dies.  One example is
+SDL2's OpenGL renderer since 2.0.18 (pt2-clone and other SDL2 programs).
+
+Bytes need no swapping, only a copy.  rand16_2 (0x40000000006bea70, 1056
+bytes) is an unreferenced static in the licence code: nothing branches to
+it and no descriptor points at it.  It now holds 8 function descriptors
+(+0x00: stride 0, sizes 1-4; +0x40: strided, sizes 1-4) and a byte loop
+(+0x80) that copies `size` bytes per element and steps the source by
+`stride` (or by `size` when packed).  The two error stubs in
+RC_getSwapCopyFn (+0x70 and +0x3b0) return descriptor[size - 1] of the
+matching set instead.
 """
 import hashlib
 import sys
@@ -253,8 +275,63 @@ def patch_base(data):
         patch_fbconfig_clamp(data, *c)
 
 
+GP = 0x6000000000076208
+SWAPCOPY_TABLES = (0x4000000000753a28, 0x4000000000753a80)   # stride 0, stride
+SWAPCOPY_BYTE_STUBS = (0x400000000025e5f0, 0x400000000025e930)
+BYTECOPY_CAVE = 0x40000000006bea70                           # rand16_2
+
+# Assembled with ia64-linux-as (sources in the comments).  Entered with
+# r32=src r33=dst r34=count r35=stride; r18 = source step, r14 = size.
+BYTECOPY_CODE = bytes.fromhex(
+    # ns1..ns4: { .mib ; adds r18=N,r0 ; adds r14=N,r0 ; br common ;; }
+    "119004000021e0080000420080000040"
+    "119008000021e0100000420070000040"
+    "11900c000021e0180000420060000040"
+    "119010000021e0200000420050000040"
+    # st1..st4: { .mib ; mov r18=r35 ; adds r14=N,r0 ; br common ;; }
+    "119000460021e0080000420040000040"
+    "119000460021e0100000420030000040"
+    "119000460021e0180000420020000040"
+    "119000460021e0200000420010000040"
+    # common: mov r19=r32 ; mov r20=r33 ; mov r21=r34 ;;
+    #         cmp.eq p6=0,r21 ;; (p6) br.ret b0 ;;
+    "0198004000214001840042a002100184"
+    "11000000010060005400720000000020"
+    "11000000010000000002008308008400"
+    # outer:  mov r15=r19 ; mov r16=r14 ;;
+    "01780026002100013800420000000400"
+    # inner:  ld1 r17=[r15],1 ;; st1 [r20]=r17,1 ; adds r16=-1,r16 ;;
+    #         cmp.ne p7=0,r16 ;; (p7) br inner ;;
+    "0188041e001400000002000000000400"
+    "01084428801500f9437e460000000400"
+    "1100000001000000400e720000000020"
+    "110000000100000000028003d0ffff4a"
+    #         add r19=r19,r18 ; adds r21=-1,r21 ;;
+    #         cmp.ne p8=0,r21 ;; (p8) br outer ;; br.ret b0 ;;
+    "01984c24002050f9577e460000000400"
+    "11000000010000005410720000000020"
+    "11000000010000000002000490ffff4a"
+    "11000000010000000002008008008400")
+
+# RC_getSwapCopyFn byte case, r8 = descriptor[size - 1]:
+#   movl r8=<descriptors - 16> ;; zxt4 r9=r32 ; mov.i ar.pfs=r36 ;;
+#   shladd r8=r9,4,r8 ; mov b0=r35 ;; br.ret.sptk.many b0 ;;
+BYTECOPY_STUB_TAIL = ("0100000001009000802400004002aa00"
+                      "010000000100804820264000300a0007"
+                      "11000000010000000002008008008400")
+BYTECOPY_STUBS = (                    # movl r8=0x40000000006bea60 / ...6beaa0
+    bytes.fromhex("05000000014000000000400001765167" + BYTECOPY_STUB_TAIL),
+    bytes.fromhex("05000000014000000000400001725567" + BYTECOPY_STUB_TAIL))
+
+
+def movl_imm(bundle):                 # X2: imm64 of an MLX bundle's movl
+    _, (_, l, x) = split(bundle)
+    return (x >> 13 & 0x7F | (x >> 27 & 0x1FF) << 7 | (x >> 22 & 0x1F) << 16 |
+            (x >> 21 & 1) << 21 | l << 22 | (x >> 36 & 1) << 63)
+
+
 def patch_extras(data):
-    """Fixes 3-6."""
+    """Fixes 3-7."""
     import struct
     # 3. SGI_SYSCONF: _SC_AUDIT (26), _SC_INF (27) -> return 0
     for ok in (25, 28, 29, 30):                      # sanity: existing stubs
@@ -288,6 +365,27 @@ def patch_extras(data):
         assert sl[1] == addl(42, old, 0), hex(a)     # mov r42=old
         sl[1] = addl(42, new, 0)
         data[o:o + 16] = join(t, sl)
+
+    # 7. GL byte arrays: plain byte copy instead of exit(1)
+    for table, stub, desc in zip(SWAPCOPY_TABLES, SWAPCOPY_BYTE_STUBS,
+                                 (BYTECOPY_CAVE, BYTECOPY_CAVE + 0x40)):
+        for i in (0, 1):                             # GL_BYTE, GL_UNSIGNED_BYTE
+            e = table + 8 * i
+            o = e - TEXT_VADDR
+            assert e + struct.unpack("<q", data[o:o + 8])[0] == stub, hex(e)
+        o = stub - TEXT_VADDR
+        _, sl = split(bytes(data[o:o + 16]))
+        assert addl(14, 1048, 1) in sl or addl(34, 1048, 1) in sl, hex(stub)
+        data[o:o + 64] = BYTECOPY_STUBS[stub == SWAPCOPY_BYTE_STUBS[1]]
+        # each stub's movl points 16 below its descriptor set
+        assert movl_imm(bytes(data[o:o + 16])) == desc - 16, hex(stub)
+    o = BYTECOPY_CAVE - TEXT_VADDR
+    t, sl = split(bytes(data[o:o + 16]))
+    assert t == 0x00 and sl[0] >> 37 == 1, "rand16_2 should start with alloc"
+    code = BYTECOPY_CAVE + 0x80
+    data[o:o + 0x80] = b"".join(struct.pack("<QQ", code + 16 * k, GP)
+                                for k in range(8))
+    data[o + 0x80:o + 0x80 + len(BYTECOPY_CODE)] = BYTECOPY_CODE
 
 
 def main():
