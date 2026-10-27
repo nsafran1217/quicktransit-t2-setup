@@ -15,6 +15,9 @@ Radeon R7 240 (Mesa 26.2 radeonsi).
 
 **On the ia64 machine (T2):** root, `bsdtar`, `python3`, `gcc` (all in a
 normal T2 install), about 2 GB free, and an X server for the GUI apps.
+`install-extras.sh` also uses GNU `tar` and `gzip`, and alsa-lib's headers
+for IRIX audio (all in a normal T2 install too), and needs about 1.5 GB
+free in `/var/tmp` while it runs, plus ~850 MB in `/irix` for the demos.
 
 **Input files**, all in one directory (subdirectories one level down are
 searched too):
@@ -24,7 +27,6 @@ searched too):
 | `IRIX-019-6.5.27m.ia64.rpm` | QuickTransit 1.2 ISO (`QuickTransit_V1_2_Linux_IA-64.iso`) [https://archive.org/details/QuickTransitV12LinuxIA64](https://archive.org/details/QuickTransitV12LinuxIA64) | `ab4bacd843a174785404513f193163ae` |
 | `libunwind-0.97-4.ia64.rpm` | same ISO | `b9ee298554b7c45c800f6fe48b206f0e` |
 | `QuickTransit-1.2.1-004.ia64.rpm` | SGI update SG0010228 (`patch10228.tar.gz`, `RPMS/`) [https://archive.org/details/patch10228.tar](https://archive.org/details/patch10228.tar)| `c90883fd6952f4d24d89ac33791f5da7` |
-| `libstdc++.so.5` (or `.gz`) | included in this kit (from SUSE Linux Enterprise Server 9 for IA-64, gcc 3.3); only needed in the inputs if missing from the kit | `4828a95f55665e3adbd74521d8906b47` (uncompressed) |
 
 The ISO also carries `QuickTransit-1.2-001.ia64.rpm`. It isn't needed: 1.2.1
 is a complete replacement. The FlexLM license is in this kit
@@ -44,24 +46,54 @@ As root on the ia64 machine:
     ./install.sh /path/to/inputs          # ~3 min
     /irix/bin/sh -c 'uname -a'            # IRIX64 <host> 6.5 07141529 IP30
 
-`install.sh` can be re-run safely. To remove everything:
-`./uninstall.sh` (a copy is also left at `/usr/QuickTransit/uninstall.sh`).
+`install.sh` is the minimal install: QuickTransit working as it did on SLES 9
+in 2005, with only the fixes today's kernel, glibc and X server need. It can
+be re-run safely (re-run `install-extras.sh` afterwards if you use it). To
+remove everything: `./uninstall.sh` (a copy is also left at
+`/usr/QuickTransit/uninstall.sh`). It stops all IRIX programs and deletes
+all of `/irix`, including anything added to it later (SGUG, IRIX headers;
+see [docs/irix-gcc.md](docs/irix-gcc.md)), so back those up first.
 
+### Optional: extras (IRIX desktop, fam, IRIS GL, audio, demos)
 
-### Optional: IRIX demos
+`install-extras.sh` adds what the full IRIX desktop session and IRIS GL
+programs need, IRIX audio through ALSA, and the IRIX demos, on top of
+`install.sh`. These go beyond the 2005 product: more QuickTransit binary
+fixes, IRIX-side libraries, and desktop files and demos that the IRIX RPM
+leaves out. The desktop files and demos come from IRIX 6.5 CDs, given as
+tar archives of the CDs (`.tar.gz`) or as directories (a CD's `dist`
+directory, or a directory above it). Tested with 6.5.30:
 
-`install-demos.sh` installs demos from IRIX 6.5 install media (tested with
-6.5.30). Point it at a `dist` directory containing the products
-`demos`, `performer_eoe`, `performer_demo` and `inventor_eoe`
-(`<product>.idb` plus its `.sw` / `.data` / `.demo` files):
+| Products | CD |
+|---|---|
+| `desktop_eoe`, `demos` | IRIX 6.5 Applications June 1998 |
+| `desktop_eoe_6530m` (overlay) | IRIX 6.5.30 Installation Tools and Overlays (1 of 3) |
+| `performer_eoe`, `performer_demo`, `inventor_eoe` | IRIX 6.5.30 Overlays (3 of 3) |
 
-    ./install-demos.sh /path/to/dist      # ~3 min, ~820 MB into /irix
+    ./install-extras.sh "IRIX 6.5 Applications June 1998.tar.gz" \
+        "IRIX 6.5.30 Installation Tools and Overlays (1 of 3).tar.gz" \
+        "IRIX 6.5.30 Overlays (3 of 3).tar.gz"            # ~6 min
+    start4dwm-x11       # X on :0 (vt7) with 4Dwm, toolchest, fm, ...
+    /irix/bin/sh -c "cd /usr/demos/General_Demos/atlantis && ./atlantis"  # IRIS GL
+    /irix/usr/sbin/sfplay /usr/share/data/sounds/demos/Slogan.aiff    # audio
+
+Other CDs can be given too; only the products in the `PRODUCTS` table at
+the top of `install-extras.sh` are taken from them. A product found on
+several CDs (Foundation 2 has 1998 versions of Performer and Inventor) is
+taken from the one with the newest `.idb`, and products not found are
+skipped. Without any CDs the rest is still installed, minus the desktop
+files and demos. To install another product, add a line to `PRODUCTS`
+with the subsystems to take and whether to add only missing files (`add`)
+or install everything (`all`).
 
 `irix-dist-extract.py` unpacks IRIX `inst` images without IRIX. Each `.idb`
 line gives a file's offset in the `.sw`/`.data` archive; the data there is
-raw or `compress`-LZW. The products'
-install scripts aren't run; they only rebuild the web demo index and the
-desktop filetype database.
+raw or `compress`-LZW. The products' install scripts aren't run; for the
+demos they only rebuild the web demo index and the desktop filetype
+database.
+
+What it does and why: [Extras](#extras-install-extrassh) below, and
+[docs/irix-desktop.md](docs/irix-desktop.md).
 
 ## Using it
 
@@ -85,20 +117,39 @@ Run demos from their own directory, as their `RUN` scripts do:
 
 | Status | Programs |
 |---|---|
-| Work | `sh`, `bash`, `uname`, `xterm`, `xclock`, `jot`, `4Dwm`, `touch`, `cp -p`, `tar` through pipes, `glxinfo`, `ivview`, `noof`, `bongo`, `glfalls`; demos `ideas`, `cycles`, `tex_cube` |
+| Work | `sh`, `bash`, `uname`, `xterm`, `xclock`, `jot`, `4Dwm`, `winterm`, `touch`, `cp -p`, `tar` through pipes, `glxinfo`, `ivview`, `noof`, `bongo`, `glfalls`; demos `ideas`, `cycles`, `tex_cube` |
 | Work with options | `perfly`: needs `-m 0 -P 2` (see known issues). In its window, `p` cycles the frame phase and `f`/`F` change the target rate. |
+| Work with `install-extras.sh` | the desktop session (`irix-desktop`: toolchest, `fm`, background icons with their labels, Icon Catalog, Twilight and the other backgrounds); IRIS GL programs (buttonfly, atlantis, newton; see [docs/iris-gl.md](docs/iris-gl.md)); audio output from n32 programs (`sfplay`, `playaiff`, SDL programs; see [docs/irix-audio.md](docs/irix-audio.md)); SGUG SDL2 programs (`pt2-clone`, `ft2-clone`, `secondreality`) after `patch-sdl2-x11.py` (see [docs/sdl2.md](docs/sdl2.md)) |
 | Untested | bzflag, mirrors, MIDIblob, vroom, pointblank, mekton, Intersim/VisFly; imaging tools (`imgview`, `movieplayer`, ...) |
-| Don't work | IRIS GL programs (buttonfly, atlantis, flight, newton, `cycol`, ...): QuickTransit has no IRIS GL. `gr_osview` (reads kernel memory). `fm` (see known issues). |
+| Don't work | IRIS GL programs without `install-extras.sh`: crash in `glXCreateContext` (see known issues). `flight` crashes even with it. `gr_osview` (reads kernel memory). |
+
+IRIX programs can't run from `/tmp`: T2 mounts it `noexec`, and
+QuickTransit maps IRIX executables with execute permission.
+
+More documentation:
+- [docs/irix-gcc.md](docs/irix-gcc.md): compiling IRIX programs with the
+  SGUG gcc under QuickTransit
+- [docs/irix-desktop.md](docs/irix-desktop.md): running the IRIX desktop
+  session (4Dwm, toolchest, fm)
+- [docs/iris-gl.md](docs/iris-gl.md): IRIS GL status and what's needed
+- [docs/irix-audio.md](docs/irix-audio.md): IRIX audio through ALSA
+- [docs/sdl2.md](docs/sdl2.md): SGUG SDL2 programs (`pt2-clone`,
+  `ft2-clone`, ...) and `patch-sdl2-x11.py`
+- [docs/qt-internals.md](docs/qt-internals.md): QuickTransit's syscall table,
+  native-library binding and config options, for extending it
 
 ## Kit contents
 
 | Path | What |
 |---|---|
 | `install.sh`, `uninstall.sh` | install / remove (run on the ia64 machine) |
-| `libstdc++.so.5.gz` | gcc 3.3 C++ runtime QuickTransit links against (from SLES 9 ia64) |
-| `patch-quicktransit.py` | binary fixes to the QuickTransit executable (problems 6, 7, 9) |
-| `install-demos.sh`, `irix-dist-extract.py` | optional IRIX demos |
-| `target/` | files copied as-is to `/` |
+| `patch-quicktransit.py` | binary fixes to the QuickTransit executable (problems 6 and 7; `--extras` adds E1 and E7) |
+| `target/` | files `install.sh` copies as-is to `/`, including `usr/QuickTransit/compat-lib/libstdc++.so.5`, the gcc 3.3 C++ runtime QuickTransit links against (from SUSE Linux Enterprise Server 9 for IA-64; md5 `4828a95f55665e3adbd74521d8906b47`) |
+| `install-extras.sh`, `extras/target/` | optional desktop / IRIS GL / audio extras, and the files they copy to `/` |
+| `extras/src/` | sources of the prebuilt IRIX n32 libraries in `extras/target` (built with the SGUG gcc, `-shared -fPIC -static-libgcc`; see [docs/irix-gcc.md](docs/irix-gcc.md)), and of `libRCAudio.so`, which `install-extras.sh` builds |
+| `patch-sdl2-x11.py` | makes an SGUG SDL2 program or libSDL2 use QuickTransit's hooked X11 ([docs/sdl2.md](docs/sdl2.md)) |
+| `irix-dist-extract.py` | unpacks IRIX `inst` products; used by `install-extras.sh` |
+| `docs/` | notes: IRIX desktop, IRIS GL, IRIX audio, SDL2, IRIX gcc, QuickTransit internals |
 
 
 ## What the install puts on the system
@@ -112,7 +163,7 @@ From the RPMs (unpacked with `bsdtar`):
 
 Added or changed by `install.sh`:
 - `/usr/QuickTransit/bin/QuickTransit`: binary-patched by
-  `patch-quicktransit.py` (md5 `d6ece54e…` → `4ef6fa5a…`). The vendor
+  `patch-quicktransit.py` (md5 `d6ece54e…` → `536a6786…`). The vendor
   binary is kept as `QuickTransit.orig`.
 - `/usr/QuickTransit/compat-lib/`: `libstdc++.so.5`, `libunwind.so.1*` and
   `libunwind-ia64.so.1*` (from the libunwind RPM), plus the shim
@@ -127,15 +178,39 @@ Added or changed by `install.sh`:
 - `/etc/X11/xorg.conf`: `FontPath` lines for `/usr/QuickTransit/fonts` and
   the IRIX fonts (`misc`, `75dpi`, `100dpi`, `Type1`). The original is kept as
   `xorg.conf.pre-quicktransit`.
-- `/etc/services`: `portmapper rpcbind` aliases on the `sunrpc` lines. The
-  original is kept as `services.pre-quicktransit`.
 - `/usr/QuickTransit/fonts/`: Utopia-bold aliases
-- `/irix/etc/fam.conf` (replaces the RPM's symlink to the host's
-  `/etc/fam.conf`) and `/irix/usr/lib/X11/Xcms.txt` (SGI colour names)
+- `/irix/usr/lib/X11/Xcms.txt` (SGI colour names)
 - The vendor's `QTBindIRIX.sh` (the RPM's own `%post`) replaces the IRIX
   libGL/libmpi/libsma with links to QuickTransit's bridging versions.
 - Modes: `/usr/QuickTransit/log` world-writable, `setuid_irixrun` setuid
   root (as in the RPM `%post`)
+
+Added or changed by `install-extras.sh` (all removed by `uninstall.sh` too):
+- `/usr/QuickTransit/bin/QuickTransit`: re-patched from `QuickTransit.orig`
+  with `--extras` (md5 `e163ec53…`)
+- `/usr/QuickTransit/bin/irix-desktop`: session launcher (an X client)
+- `/usr/bin/start4dwm-x11`: starts X on `:0` (vt7) with that session;
+  arguments replace `:0 vt7`
+- `/usr/QuickTransit/lib/irix/lib32/libglxsync.so`, `libfakeci.so` (IRIX
+  path `/usr/QuickTransit/lib32`): IRIX preload libraries
+- `/usr/QuickTransit/etc/QuickTransit.conf`: an `FU_RLDN32_LIST` line that
+  preloads `libfakeci.so` and `libglxsync.so` into every IRIX n32 program
+- `/irix/usr/lib32/libaudio.so.1`: the kit's libaudio (also kept in
+  `/usr/QuickTransit/lib/irix/lib32/libaudio.so`). SGI's is kept as
+  `libaudio.so.1.sgi`.
+- `/usr/QuickTransit/lib/ia64/libRCAudio.so`: its native ALSA half, built
+  from `extras/src/irixaudio/rcaudio.c`
+- `/etc/services`: `portmapper rpcbind` aliases on the `sunrpc` lines. The
+  original is kept as `services.pre-quicktransit`.
+- `/irix/etc/fam.conf` (replaces the RPM's symlink to the host's
+  `/etc/fam.conf`)
+- `/irix`: desktop files from the IRIX CDs that the RPM doesn't have (the
+  `desktop_eoe` subsystems `toolchest`, `control_panels`, `envm`, `Desks`,
+  `share`; existing files aren't touched), and the real
+  `/usr/lib/desktop/waitmap` in place of QuickTransit's "not supported" stub
+- `/irix`: the demo products `demos` (`/usr/demos`), `performer_eoe`,
+  `performer_demo` and `inventor_eoe` (demo and data subsystems), replacing
+  any files already there
 
 ## Problems fixed, and how
 
@@ -184,19 +259,7 @@ Added or changed by `install.sh`:
    instead. The script checks the input md5 and every original instruction
    before changing anything.
 
-7. **Fatal "Unsupported" syssgi calls** (hit by IRIX `fam`), also fixed in
-   `patch-quicktransit.py`:
-   - `sysconf(_SC_AUDIT)` and `sysconf(_SC_INF)` now return 0, like the
-     other Trusted-IRIX names do.
-   - Any other unsupported `syssgi` subcall is logged and returns 0,
-     instead of killing the program.
-
-8. **rpcbind** (needed by IRIX `fam`) won't open its TCP/UDP ports on T2:
-   it looks up the service names `rpcbind` and `portmapper`, and T2's
-   `/etc/services` has neither. The installer adds them as aliases.
-   rpcbind is not started at boot.
-
-9. **GL fixes:**
+7. **GL fixes:**
    - **Too many FBConfigs:** QuickTransit aborted ("returning too many
      FBConfigs (272), aborting!") because its tables hold 255 and current
      X servers offer more. `patch-quicktransit.py` caps the count at 255.
@@ -204,7 +267,7 @@ Added or changed by `install.sh`:
      wants an LLVM JIT that ia64 doesn't have. `qtcompat.c` sets
      `DRAW_USE_LLVM=0` for QuickTransit processes only.
 
-10. **IRIX Type1 fonts crash the X server.** T2's ia64 glibc `memchr`
+8. **IRIX Type1 fonts crash the X server.** T2's ia64 glibc `memchr`
     reads past the end of its buffer (a bug in glibc's `memchr.S`), which
     makes FreeType crash on *any* PFA font, and it took Xorg down with it.
     The IRIX `Type1/*.pfa` entries are absolute symlinks that the Linux X
@@ -212,6 +275,65 @@ Added or changed by `install.sh`:
     Don't "fix" those links until T2's glibc has a fixed `memchr`.
     Performer's GUI wants `utopia-bold`, so `/usr/QuickTransit/fonts`
     aliases it to IRIX's bitmap `utopia-medium`.
+
+## Extras (`install-extras.sh`)
+
+E1. **Fatal "Unsupported" syssgi calls and wrong syssgi results** (hit by
+   IRIX `fam` and `sh`), fixed in `patch-quicktransit.py --extras`:
+   - `sysconf(_SC_AUDIT)` and `sysconf(_SC_INF)` now return 0, like the
+     other Trusted-IRIX names do.
+   - Any other unsupported `syssgi` subcall is logged and returns 0,
+     instead of killing the program.
+   - `setgroups()` returns 0. QuickTransit already ignored it, but
+     returned -1, and fam exits when that fails.
+   - `sysconf(_SC_CHILD_MAX)` returned 6, so IRIX `sh` failed with "too
+     many jobs" once six background jobs were running (`Xsession.dt` runs
+     more). It now returns 1034, as IRIX does. `_SC_OPEN_MAX` goes from 16
+     to 1024.
+
+E2. **rpcbind** (needed by IRIX `fam`) won't open its TCP/UDP ports on T2:
+   it looks up the service names `rpcbind` and `portmapper`, and T2's
+   `/etc/services` has neither. They are added as aliases. rpcbind is not
+   started at boot; `irix-desktop` starts it and fam.
+
+E3. **Missing desktop files.** The IRIX RPM has no `toolchest`, no
+   `Xsession.dt`, and no app-defaults for fm and the control panels. They
+   are installed from the IRIX CDs, adding only files `/irix` doesn't have.
+   QuickTransit's own postinstall replaces `/usr/lib/desktop/waitmap` with
+   a "not currently supported" script. The toolchest runs most of its
+   commands through waitmap, so Log Out did nothing. The real one works and
+   is put back.
+
+E4. **Icon labels painted over, and Twilight hidden.** IRIX programs mix X
+   and GL drawing in one window, and SGI hardware puts the desktop icons
+   in overlay planes, above GL backgrounds like Twilight. Current Mesa
+   and Xorg do neither. `libglxsync.so`, preloaded into every IRIX n32
+   program, adds the GL/X waits the icon labels need, and copies the frames
+   of "root painter" backgrounds (Twilight) into the desktop background
+   pixmap that fm shows. See [docs/irix-desktop.md](docs/irix-desktop.md).
+
+E5. **IRIS GL** needs a colour-index visual. `libfakeci.so`, preloaded
+   into every IRIX n32 program, emulates one in programs linked with IRIS
+   GL and stays out of the way in all others. See [docs/iris-gl.md](docs/iris-gl.md).
+
+E6. **No audio.** SGI's libaudio drives the `hdsp` kernel driver, which
+   QuickTransit doesn't emulate (SDL's Irix audio driver crashed
+   QuickTransit). The kit's n32 `libaudio.so.1` implements the Audio
+   Library's output side and hands the samples to `libRCAudio.so`, a native
+   library, through QuickTransit's own native-call mechanism. That library
+   plays them through ALSA's `default` device (or `$QTAUDIO_DEVICE`). There
+   is no daemon and no per-program setup. Input, o32 and n64 aren't covered.
+   To play several programs at once, `default` has to mix (dmix is enough,
+   no sound server needed); a `plug` straight onto a `hw` device plays one
+   at a time. See [docs/irix-audio.md](docs/irix-audio.md).
+
+E7. **GL byte vertex arrays exit the program** ("GLbindStub: swapCopy byte
+   stride unimplemented"). QuickTransit byte-swaps vertex arrays at draw
+   time and had no routine for `GL_BYTE` / `GL_UNSIGNED_BYTE` ones, which
+   need a copy but no swap. SDL2's OpenGL renderer (2.0.18 and later)
+   draws with `glColorPointer(4, GL_UNSIGNED_BYTE, ...)`. `patch-quicktransit.py
+   --extras` adds a byte copy in an unused function's space. SDL2 programs
+   also need `patch-sdl2-x11.py`; see [docs/sdl2.md](docs/sdl2.md).
 
 ## Known issues
 
@@ -227,13 +349,22 @@ Added or changed by `install.sh`:
   (for IRIX shared arenas, `/tmp/.QuickTransit-<id>.ctrl`) that outlives a
   killed program. Kill leftovers before rerunning; `ss -xlp | grep
   QuickTransit` lists them.
-- **`fm` (file manager)** opens but shows no files. IRIX `fam` starts
-  (`rpcbind; /irix/usr/etc/fam -f &`) but exits when a client connects:
-  it calls `setgroups()`, which QuickTransit doesn't implement.
+- **Desktop icon labels are missing** (fm, background, Icon Catalog)
+  without `install-extras.sh`, and fm needs fam (E2, E4).
 - **`tar cf file` / `tar xf file`** fail with `IRIX_ioctl: 't' subcall
   unsupported: 97`. Use pipes instead: `tar cf - ... > file`,
   `tar xf - < file`.
-- **IRIS GL** (the pre-OpenGL API) isn't supported by QuickTransit.
-- **No toolchest** binary in the IRIX environment RPM.
+- **IRIS GL** (the pre-OpenGL API): IRIX's own IRIS GL-on-OpenGL library
+  (IGLOO) loads, but it looks for a colour-index visual that current X
+  servers don't offer. It then passes a NULL visual to `glXCreateContext`,
+  and QuickTransit crashes. `install-extras.sh` adds an experimental shim
+  that gets most IRIS GL demos running (E5).
+- **No toolchest** binary in the IRIX environment RPM, and other desktop
+  files are missing too; `install-extras.sh` installs them from IRIX media
+  (E3).
+- **No audio** for IRIX programs without `install-extras.sh`: QuickTransit
+  has no IRIX audio backend (`audiostate`: "This machine has no audio
+  driver at all"). With it, n32 programs play through ALSA (E6); there is
+  still no audio input, and o32/n64 programs have none.
 
 

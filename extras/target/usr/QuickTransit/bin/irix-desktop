@@ -1,0 +1,54 @@
+#!/bin/bash
+# Run the IRIX desktop session (/var/X11/xdm/Xsession.dt: 4Dwm, toolchest,
+# fm -b, ...) on an X server with no window manager, as an X client for
+# startx or a display manager:
+#
+#   startx /usr/QuickTransit/bin/irix-desktop -- :0
+#
+# Starts rpcbind and fam if needed.  Returns at toolchest Desktop > Log Out,
+# which ends a startx session.
+pgrep -x rpcbind >/dev/null || rpcbind
+# fam (RPC program 391002).  rpcbind keeps the registration of a fam that
+# was killed, so look for the process and drop a stale registration.
+if ! pgrep -f '^/usr/QuickTransit/bin/QuickTransit .*/irix/usr/etc/fam( |$)' >/dev/null; then
+    rpcinfo -d 391002 2 2>/dev/null
+    setsid /irix/usr/etc/fam -f </dev/null >/dev/null 2>&1 &
+    for i in $(seq 20); do
+        rpcinfo -p localhost 2>/dev/null | grep -q sgi_fam && break
+        sleep 0.5
+    done
+fi
+
+export HOME=${HOME:-/root} USER=${USER:-root} LOGNAME=${LOGNAME:-root} SHELL=/bin/sh
+cd "$HOME" || exit 1
+
+# Like xdm, end what the session left behind: fmserv outlives the X server,
+# and winterm's shells (DISPLAY=:0.0) ignore SIGTERM.  Also done when xinit
+# signals this script because the X server went away.  fam stays: it serves
+# every display.
+D=$(printf '%s\n' "$DISPLAY" | sed -E 's/(:[0-9]+)\.[0-9]+$/\1/; s/[.]/\\./g')
+cleanup() {
+    trap - EXIT HUP INT TERM
+    pids=
+    for p in $(pgrep -f '^/usr/QuickTransit/bin/QuickTransit '); do
+        case "$(tr '\0' ' ' < /proc/$p/cmdline 2>/dev/null)" in
+            *' /irix/usr/etc/fam '*) continue ;;
+        esac
+        tr '\0' '\n' < /proc/$p/environ 2>/dev/null |
+            grep -qE "^DISPLAY=$D(\.[0-9]+)?\$" && pids="$pids $p"
+    done
+    [ -n "$pids" ] || return 0
+    kill $pids 2>/dev/null
+    sleep 1
+    kill -KILL $pids 2>/dev/null
+    return 0
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+# Xsession.dt starts everything in the background and ends with
+# "exec reaper", which sets _SGI_SESSION_PROPERTY on the root window and
+# exits.  Log Out (endsession) removes it; IRIX xdm then ends the session,
+# and so does this script.
+/irix/bin/sh /var/X11/xdm/Xsession.dt </dev/null
+/irix/bin/sh -c '/usr/bin/X11/xprop -root -exists _SGI_SESSION_PROPERTY' >/dev/null

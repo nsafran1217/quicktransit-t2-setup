@@ -5,10 +5,11 @@
 #   ./install.sh <input-dir>
 #
 # <input-dir> holds the files listed in README.md: RPMs from the QuickTransit
-# ISO and the SG0010228 update, plus libstdc++.so.5[.gz] if this kit doesn't
-# include it.  Subdirectories one level down are searched too.  T2 has no rpm,
+# ISO and the SG0010228 update.  Subdirectories one level down are searched
+# too.  T2 has no rpm,
 # so the RPMs are unpacked with bsdtar and their %post scriptlets are
-# reimplemented below.  Safe to re-run.
+# reimplemented below.  Safe to re-run; re-run install-extras.sh afterwards if
+# it was used, since this restores the vendor QuickTransit.conf and binary.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -32,9 +33,6 @@ need() {
 IRIX_RPM=$(need IRIX-019-6.5.27m.ia64.rpm ab4bacd843a174785404513f193163ae)
 UNWIND_RPM=$(need libunwind-0.97-4.ia64.rpm b9ee298554b7c45c800f6fe48b206f0e)
 QT_RPM=$(need QuickTransit-1.2.1-004.ia64.rpm c90883fd6952f4d24d89ac33791f5da7)
-# libstdc++.so.5, plain or gzipped, in the kit directory or the inputs
-STDCXX5=$(find "$HERE" -maxdepth 1 -type f -name 'libstdc++.so.5*' -print -quit)
-[ -n "$STDCXX5" ] || STDCXX5=$(need 'libstdc++.so.5*')
 
 QT=/usr/QuickTransit
 CL=$QT/compat-lib
@@ -48,14 +46,15 @@ echo ">>> QuickTransit 1.2.1 -> $QT"
 # symlink, which bsdtar refuses to extract through.
 bsdtar -xpf "$QT_RPM" -C / --exclude etc/init.d
 
-# --- Kit files: license, binfmt config, shim sources, fonts, fam.conf
+# --- Kit files: license, binfmt config, libstdc++.so.5, shim sources, fonts
 echo ">>> kit files"
 tar -C "$HERE/target" --owner=0 --group=0 -cf - . |
     tar -C / --no-overwrite-dir -xf -
 cp "$HERE/uninstall.sh" "$QT/uninstall.sh"
 
-# --- Binary fixes (see patch-quicktransit.py).  The vendor binary was just
-# re-extracted from the RPM; it is kept as QuickTransit.orig.
+# --- Binary fixes (see patch-quicktransit.py; install-extras.sh re-patches
+# with --extras).  The vendor binary was just re-extracted from the RPM; it is
+# kept as QuickTransit.orig.
 cp -p $QT/bin/QuickTransit $QT/bin/QuickTransit.orig
 python3 -I "$HERE/patch-quicktransit.py" $QT/bin/QuickTransit.orig $QT/bin/QuickTransit
 chmod 755 $QT/bin/QuickTransit
@@ -66,19 +65,14 @@ $QT/scripts/QTBindIRIX.sh /irix $QT $QT/scripts $QT/scripts
 chmod a+w $QT/log
 chmod u+s $QT/bin/setuid_irixrun
 
-# --- Old runtime libs.  QuickTransit has DT_NEEDED libstdc++.so.5 and the
-# unversioned "libunwind-ia64.so" (which ldconfig never caches), so they are
-# kept in compat-lib and symlinked into /usr/lib.  T2 has none of these names
-# (it ships libunwind.so.7 and libstdc++.so.6).
+# --- Old runtime libs.  QuickTransit has DT_NEEDED libstdc++.so.5 (from the
+# kit's target/) and the unversioned "libunwind-ia64.so" (which ldconfig never
+# caches), so they are kept in compat-lib and symlinked into /usr/lib.  T2 has
+# none of these names (it ships libunwind.so.7 and libstdc++.so.6).
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
 bsdtar -xf "$UNWIND_RPM" -C "$WORK" './usr/lib/libunwind*'
 mkdir -p $CL
 cp -a "$WORK"/usr/lib/libunwind.so.1* "$WORK"/usr/lib/libunwind-ia64.so.1* $CL/
-case $STDCXX5 in
-    *.gz) gzip -dc "$STDCXX5" > $CL/libstdc++.so.5 ;;
-    *) cp "$STDCXX5" $CL/libstdc++.so.5 ;;
-esac
-chmod 755 $CL/libstdc++.so.5
 for l in libstdc++.so.5 libunwind.so.1 libunwind-ia64.so.1; do
     ln -sfn $CL/$l /usr/lib/$l
 done
@@ -142,13 +136,5 @@ if ! grep -q '/irix/usr/lib/X11/fonts' /etc/X11/xorg.conf; then
         echo "WARNING: no Files section in /etc/X11/xorg.conf, font path not added" >&2
 fi
 
-# --- T2's rpcbind can't start its TCP/UDP listeners: it looks up the service
-# names "rpcbind" and "portmapper", but /etc/services has no aliases on the
-# sunrpc lines.  Add them (original kept as /etc/services.pre-quicktransit).
-# Needed by IRIX fam (and so the fm file manager).
-if ! grep -qE '^sunrpc[[:space:]]+111/tcp[[:space:]]+portmapper' /etc/services; then
-    cp -p /etc/services /etc/services.pre-quicktransit
-    sed -i -E 's|^(sunrpc[[:space:]]+111/(tcp\|udp))([[:space:]])|\1 portmapper rpcbind\3|' /etc/services
-fi
-
 echo ">>> done.  Test: /irix/bin/sh -c 'uname -a'"
+echo "    Optional desktop/fam/IRIS GL/audio/demos extras: ./install-extras.sh <irix-cds>..."
