@@ -27,7 +27,6 @@ searched too):
 | `IRIX-019-6.5.27m.ia64.rpm` | QuickTransit 1.2 ISO (`QuickTransit_V1_2_Linux_IA-64.iso`) [https://archive.org/details/QuickTransitV12LinuxIA64](https://archive.org/details/QuickTransitV12LinuxIA64) | `ab4bacd843a174785404513f193163ae` |
 | `libunwind-0.97-4.ia64.rpm` | same ISO | `b9ee298554b7c45c800f6fe48b206f0e` |
 | `QuickTransit-1.2.1-004.ia64.rpm` | SGI update SG0010228 (`patch10228.tar.gz`, `RPMS/`) [https://archive.org/details/patch10228.tar](https://archive.org/details/patch10228.tar)| `c90883fd6952f4d24d89ac33791f5da7` |
-| `libstdc++.so.5` (or `.gz`) | included in this kit (from SUSE Linux Enterprise Server 9 for IA-64, gcc 3.3); only needed in the inputs if missing from the kit | `4828a95f55665e3adbd74521d8906b47` (uncompressed) |
 
 The ISO also carries `QuickTransit-1.2-001.ia64.rpm`. It isn't needed: 1.2.1
 is a complete replacement. The FlexLM license is in this kit
@@ -51,7 +50,9 @@ As root on the ia64 machine:
 in 2005, with only the fixes today's kernel, glibc and X server need. It can
 be re-run safely (re-run `install-extras.sh` afterwards if you use it). To
 remove everything: `./uninstall.sh` (a copy is also left at
-`/usr/QuickTransit/uninstall.sh`).
+`/usr/QuickTransit/uninstall.sh`). It stops all IRIX programs and deletes
+all of `/irix`, including anything added to it later (SGUG, IRIX headers;
+see [docs/irix-gcc.md](docs/irix-gcc.md)), so back those up first.
 
 ### Optional: extras (IRIX desktop, fam, IRIS GL, audio, demos)
 
@@ -142,9 +143,8 @@ More documentation:
 | Path | What |
 |---|---|
 | `install.sh`, `uninstall.sh` | install / remove (run on the ia64 machine) |
-| `libstdc++.so.5.gz` | gcc 3.3 C++ runtime QuickTransit links against (from SLES 9 ia64) |
 | `patch-quicktransit.py` | binary fixes to the QuickTransit executable (problems 6 and 7; `--extras` adds E1 and E7) |
-| `target/` | files `install.sh` copies as-is to `/` |
+| `target/` | files `install.sh` copies as-is to `/`, including `usr/QuickTransit/compat-lib/libstdc++.so.5`, the gcc 3.3 C++ runtime QuickTransit links against (from SUSE Linux Enterprise Server 9 for IA-64; md5 `4828a95f55665e3adbd74521d8906b47`) |
 | `install-extras.sh`, `extras/target/` | optional desktop / IRIS GL / audio extras, and the files they copy to `/` |
 | `extras/src/` | sources of the prebuilt IRIX n32 libraries in `extras/target` (built with the SGUG gcc, `-shared -fPIC -static-libgcc`; see [docs/irix-gcc.md](docs/irix-gcc.md)), and of `libRCAudio.so`, which `install-extras.sh` builds |
 | `patch-sdl2-x11.py` | makes an SGUG SDL2 program or libSDL2 use QuickTransit's hooked X11 ([docs/sdl2.md](docs/sdl2.md)) |
