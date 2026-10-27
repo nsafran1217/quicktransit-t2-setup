@@ -58,11 +58,20 @@ themselves, so leave `SDL_AUDIODRIVER` unset.
 
       pcm.!default {
           type plug
-          slave.pcm { type dmix; ipc_key 5678; slave.pcm "hw:Wireless" }
+          slave.pcm {
+              type dmix
+              ipc_key 5678
+              ipc_perm 0666
+              slave { pcm "hw:Wireless"; period_size 1024; buffer_size 8192 }
+          }
       }
       ctl.!default { type hw; card Wireless }
 
-  PipeWire or PulseAudio, through their ALSA plugins, mix as well.
+  Set `period_size`: dmix's default period is 125 ms, and no client gets
+  a buffer shorter than two periods. SDL asks for about 46 ms, would get
+  250 ms, and its sound would trail the picture by that much. With the
+  settings above, SDL gets 43 ms and programs with long queues get up to
+  170 ms. PipeWire or PulseAudio, through their ALSA plugins, mix as well.
 - **`QTAUDIO_DEBUG=1`** prints each port's ALSA setup (rate, channels,
   format, buffer and period sizes) and every underrun.
 
@@ -152,6 +161,7 @@ Results on pople, 2026-10-27, with ALSA `default` = `plug` → HDMI:
 | SDL2 `secondreality` (sgug), Xvfb, 40 s | music through SDL's Irix driver with no `SDL_AUDIODRIVER`; no crash. SDL asks for a small queue (46 ms ALSA buffer); with Xvfb's software GL loading both CPUs it underran twice in 38 s. |
 | two programs on the exclusive HDMI `hw` device | second `alOpenPort` fails cleanly, first keeps playing |
 | two `altone`s and an `aplay` at once through `plug` → dmix on HDMI | all three play; every format opens (float, after the S32 change) |
+| `aplay` and two `sfplay`s at once, `default` = the dmix example above on a USB headset | all three play; the IRIX ports get 940-frame periods |
 
 ## Background: the old workaround
 
