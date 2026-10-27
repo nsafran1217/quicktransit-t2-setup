@@ -145,4 +145,4 @@ if ! grep -q '/irix/usr/lib/X11/fonts' /etc/X11/xorg.conf; then
 fi
 
 echo ">>> done.  Test: /irix/bin/sh -c 'uname -a'"
-echo "    Optional desktop/fam/IRIS GL extras: ./install-extras.sh <irix-dist-dir>"
+echo "    Optional desktop/fam/IRIS GL/audio/demos extras: ./install-extras.sh <irix-cds>..."

@@ -15,6 +15,9 @@ Radeon R7 240 (Mesa 26.2 radeonsi).
 
 **On the ia64 machine (T2):** root, `bsdtar`, `python3`, `gcc` (all in a
 normal T2 install), about 2 GB free, and an X server for the GUI apps.
+`install-extras.sh` also uses GNU `tar` and `gzip`, and alsa-lib's headers
+for IRIX audio (all in a normal T2 install too), and needs about 1.5 GB
+free in `/var/tmp` while it runs, plus ~850 MB in `/irix` for the demos.
 
 **Input files**, all in one directory (subdirectories one level down are
 searched too):
@@ -50,39 +53,46 @@ be re-run safely (re-run `install-extras.sh` afterwards if you use it). To
 remove everything: `./uninstall.sh` (a copy is also left at
 `/usr/QuickTransit/uninstall.sh`).
 
-### Optional: extras (IRIX desktop, fam, IRIS GL, audio)
+### Optional: extras (IRIX desktop, fam, IRIS GL, audio, demos)
 
 `install-extras.sh` adds what the full IRIX desktop session and IRIS GL
-programs need, and IRIX audio through ALSA, on top of `install.sh`. These
-go beyond the 2005 product: more QuickTransit binary fixes, IRIX-side
-libraries, and desktop files that the IRIX RPM leaves out. The files come from IRIX 6.5 media, a
-`dist` directory with `desktop_eoe.idb` (6.5.30 with its `_6530m` overlays
-was tested):
+programs need, IRIX audio through ALSA, and the IRIX demos, on top of
+`install.sh`. These go beyond the 2005 product: more QuickTransit binary
+fixes, IRIX-side libraries, and desktop files and demos that the IRIX RPM
+leaves out. The desktop files and demos come from IRIX 6.5 CDs, given as
+tar archives of the CDs (`.tar.gz`) or as directories (a CD's `dist`
+directory, or a directory above it). Tested with 6.5.30:
 
-    ./install-extras.sh /path/to/dist     # ~1 min
+| Products | CD |
+|---|---|
+| `desktop_eoe`, `demos` | IRIX 6.5 Applications June 1998 |
+| `desktop_eoe_6530m` (overlay) | IRIX 6.5.30 Installation Tools and Overlays (1 of 3) |
+| `performer_eoe`, `performer_demo`, `inventor_eoe` | IRIX 6.5.30 Overlays (3 of 3) |
+
+    ./install-extras.sh "IRIX 6.5 Applications June 1998.tar.gz" \
+        "IRIX 6.5.30 Installation Tools and Overlays (1 of 3).tar.gz" \
+        "IRIX 6.5.30 Overlays (3 of 3).tar.gz"            # ~6 min
     startx /usr/QuickTransit/bin/irix-desktop -- :0     # 4Dwm, toolchest, fm, ...
     /irix/bin/sh -c "cd /usr/demos/General_Demos/atlantis && ./atlantis"  # IRIS GL
     /irix/usr/sbin/sfplay /usr/share/data/sounds/demos/Slogan.aiff    # audio
 
-Without the `dist` argument the desktop files are skipped. What it does
-and why: [Extras](#extras-install-extrassh) below, and
-[docs/irix-desktop.md](docs/irix-desktop.md).
-
-
-### Optional: IRIX demos
-
-`install-demos.sh` installs demos from IRIX 6.5 install media (tested with
-6.5.30). Point it at a `dist` directory containing the products
-`demos`, `performer_eoe`, `performer_demo` and `inventor_eoe`
-(`<product>.idb` plus its `.sw` / `.data` / `.demo` files):
-
-    ./install-demos.sh /path/to/dist      # ~3 min, ~820 MB into /irix
+Other CDs can be given too; only the products in the `PRODUCTS` table at
+the top of `install-extras.sh` are taken from them. A product found on
+several CDs (Foundation 2 has 1998 versions of Performer and Inventor) is
+taken from the one with the newest `.idb`, and products not found are
+skipped. Without any CDs the rest is still installed, minus the desktop
+files and demos. To install another product, add a line to `PRODUCTS`
+with the subsystems to take and whether to add only missing files (`add`)
+or install everything (`all`).
 
 `irix-dist-extract.py` unpacks IRIX `inst` images without IRIX. Each `.idb`
 line gives a file's offset in the `.sw`/`.data` archive; the data there is
-raw or `compress`-LZW. The products'
-install scripts aren't run; they only rebuild the web demo index and the
-desktop filetype database.
+raw or `compress`-LZW. The products' install scripts aren't run; for the
+demos they only rebuild the web demo index and the desktop filetype
+database.
+
+What it does and why: [Extras](#extras-install-extrassh) below, and
+[docs/irix-desktop.md](docs/irix-desktop.md).
 
 ## Using it
 
@@ -138,7 +148,7 @@ More documentation:
 | `install-extras.sh`, `extras/target/` | optional desktop / IRIS GL / audio extras, and the files they copy to `/` |
 | `extras/src/` | sources of the prebuilt IRIX n32 libraries in `extras/target` (built with the SGUG gcc, `-shared -fPIC -static-libgcc`; see [docs/irix-gcc.md](docs/irix-gcc.md)), and of `libRCAudio.so`, which `install-extras.sh` builds |
 | `patch-sdl2-x11.py` | makes an SGUG SDL2 program or libSDL2 use QuickTransit's hooked X11 ([docs/sdl2.md](docs/sdl2.md)) |
-| `install-demos.sh`, `irix-dist-extract.py` | optional IRIX demos; the extractor is also used by `install-extras.sh` |
+| `irix-dist-extract.py` | unpacks IRIX `inst` products; used by `install-extras.sh` |
 | `docs/` | notes: IRIX desktop, IRIS GL, IRIX audio, SDL2, IRIX gcc, QuickTransit internals |
 
 
@@ -192,10 +202,13 @@ Added or changed by `install-extras.sh` (all removed by `uninstall.sh` too):
   original is kept as `services.pre-quicktransit`.
 - `/irix/etc/fam.conf` (replaces the RPM's symlink to the host's
   `/etc/fam.conf`)
-- `/irix`: desktop files from the `dist` that the RPM doesn't have (the
+- `/irix`: desktop files from the IRIX CDs that the RPM doesn't have (the
   `desktop_eoe` subsystems `toolchest`, `control_panels`, `envm`, `Desks`,
   `share`; existing files aren't touched), and the real
   `/usr/lib/desktop/waitmap` in place of QuickTransit's "not supported" stub
+- `/irix`: the demo products `demos` (`/usr/demos`), `performer_eoe`,
+  `performer_demo` and `inventor_eoe` (demo and data subsystems), replacing
+  any files already there
 
 ## Problems fixed, and how
 
@@ -283,7 +296,7 @@ E2. **rpcbind** (needed by IRIX `fam`) won't open its TCP/UDP ports on T2:
 
 E3. **Missing desktop files.** The IRIX RPM has no `toolchest`, no
    `Xsession.dt`, and no app-defaults for fm and the control panels. They
-   are installed from the `dist`, adding only files `/irix` doesn't have.
+   are installed from the IRIX CDs, adding only files `/irix` doesn't have.
    QuickTransit's own postinstall replaces `/usr/lib/desktop/waitmap` with
    a "not currently supported" script. The toolchest runs most of its
    commands through waitmap, so Log Out did nothing. The real one works and

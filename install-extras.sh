@@ -1,27 +1,74 @@
 #!/bin/bash
 # Optional additions on top of install.sh: the IRIX desktop session (4Dwm,
-# toolchest, fm, fam), IRIS GL programs and IRIX audio.  Run as root, after
-# install.sh:
+# toolchest, fm, fam), IRIS GL programs, IRIX audio, and the IRIX demos.
+# Run as root, after install.sh:
 #
-#   ./install-extras.sh [<irix-dist-dir>]
+#   ./install-extras.sh [<irix-media>...]
 #
-# <irix-dist-dir> is an IRIX 6.5 "dist" directory (desktop_eoe.idb, ...;
-# 6.5.30 with the _6530m overlays was tested).  Without it the desktop files
-# are skipped.  Safe to re-run; re-run it after install.sh, which restores the
-# vendor QuickTransit.conf and the base-patched binary.  See README.md
-# ("Optional extras") and docs/irix-desktop.md.
+# <irix-media> are IRIX 6.5 CDs, each either a tar archive of the CD
+# (.tar.gz, ...) or a directory (the CD's dist directory, or a directory
+# above it).  The products in PRODUCTS below are installed from them; see
+# README.md for which CDs have them.  Without media the desktop files and
+# demos are skipped.  Safe to re-run; re-run it after install.sh, which
+# restores the vendor QuickTransit.conf and the base-patched binary.  See
+# README.md ("Optional extras") and docs/irix-desktop.md.
 set -euo pipefail
+
+# IRIX products installed from the media, one per line, overlays after their
+# base:  <product> <how> <subsystems (regex)> [# comment]
+# how: "add" installs only the files /irix doesn't have yet; "all" installs
+# every file, replacing what is there.  A product on none of the media is
+# skipped.  One on several (e.g. inventor_eoe on Foundation 2 and on the
+# 6.5.30 overlays) is taken from the media with the newest <product>.idb.
+PRODUCTS='
+desktop_eoe        add ^desktop_eoe\.sw\.(toolchest|control_panels|envm|Desks|share)$  # toolchest, Xsession.dt, app-defaults
+desktop_eoe_6530m  add ^desktop_eoe\.sw\.(toolchest|control_panels|envm|Desks|share)$  # 6.5.30 overlay
+demos              all ^demos\.sw\.                    # /usr/demos (General_Demos, Buttonfly, ...)
+performer_eoe      all ^performer_eoe\.sw\.            # Performer runtime (Intersim, VisFly)
+performer_demo     all ^performer_demo\.(sw|data)\.    # Performer demos + town/city data
+inventor_eoe       all ^inventor_eoe\.(demo|data)\.    # Inventor demo programs + sample models
+'
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 die() { echo "install-extras.sh: $*" >&2; exit 1; }
-[ $# -le 1 ] || die "usage: install-extras.sh [<irix-dist-dir>]"
 [ "$(id -u)" = 0 ] || die "must be run as root"
 QT=/usr/QuickTransit
 [ -f $QT/bin/QuickTransit.orig ] || die "run install.sh first"
-DIST=
-if [ $# = 1 ]; then
-    DIST=$(cd "$1" && pwd)
-    [ -f "$DIST/desktop_eoe.idb" ] || die "$DIST: no desktop_eoe.idb"
+for m in "$@"; do [ -e "$m" ] || die "$m: not found"; done
+
+# --- IRIX products: unpacked into $WORK/add and $WORK/all (by <how>) before
+# anything is changed; copied to /irix at the end.  Staged on the root
+# filesystem: up to ~1.5 GB with the demos, too big for a tmpfs /tmp.
+WORK=$(mktemp -d /var/tmp/qt-extras.XXXXXX); trap 'rm -rf "$WORK"' EXIT
+NAMES=$(sed -n 's/^\([a-z0-9_]*\) .*/\1/p' <<< "$PRODUCTS" | paste -sd'|')
+SRC=() n=0
+for m in "$@"; do
+    if [ -d "$m" ]; then SRC+=("$m"); continue; fi
+    # Only the products' files are taken out of a CD archive.  Both tars
+    # fail on a name that isn't in the archive, so list it first.
+    n=$((n + 1)); mkdir "$WORK/media$n"
+    echo ">>> reading $m"
+    tar --warning=no-alone-zero-block -tf "$m" > "$WORK/list" || die "$m: can't read"
+    grep -E "(^|/)dist/($NAMES)(\.[^/]*)?$" "$WORK/list" > "$WORK/media$n.list" || true
+    [ -s "$WORK/media$n.list" ] &&
+        tar --warning=no-alone-zero-block -C "$WORK/media$n" -xf "$m" -T "$WORK/media$n.list"
+    SRC+=("$WORK/media$n")
+done
+if [ ${#SRC[@]} = 0 ]; then
+    echo ">>> no IRIX media given: desktop files and demos skipped"
+else
+    echo ">>> IRIX products"
+    while read -r p how re _ <&3; do
+        [ -n "$p" ] || continue
+        case $how in add|all) ;; *) die "PRODUCTS: $p: bad <how> '$how'" ;; esac
+        idb=$(for s in "${SRC[@]}"; do find "$s" -maxdepth 3 -name "$p.idb"; done |
+              while read -r f; do echo "$(stat -c %Y "$f") $f"; done |
+              sort -n | tail -1 | cut -d' ' -f2-)
+        if [ -z "$idb" ]; then echo "    $p: not on the media, skipped"; continue; fi
+        echo -n "    "
+        python3 -I "$HERE/irix-dist-extract.py" "$(dirname "$idb")" $p "$WORK/$how" "$re" | sed -n 1p
+    done 3<<< "$PRODUCTS"
+    rm -rf "$WORK"/media*
 fi
 
 # --- Binary fixes 3-7 (fam, IRIX sh job control, GL byte arrays; see
@@ -83,33 +130,30 @@ if ! grep -qE '^sunrpc[[:space:]]+111/tcp[[:space:]]+portmapper' /etc/services; 
     sed -i -E 's|^(sunrpc[[:space:]]+111/(tcp\|udp))([[:space:]])|\1 portmapper rpcbind\3|' /etc/services
 fi
 
-# --- Desktop files missing from the RPM's 6.5.27m tree (toolchest,
-# Xsession.dt, app-defaults, control panels, ...), from IRIX media.  Only
-# files /irix doesn't have are added; the _6530m overlay goes over the base.
-if [ -n "$DIST" ]; then
-    echo ">>> IRIX desktop files from $DIST"
-    STAGE=$(mktemp -d /var/tmp/qt-desktop.XXXXXX); trap 'rm -rf "$STAGE"' EXIT
-    R='desktop_eoe\.sw\.(toolchest|control_panels|envm|Desks|share)$'
-    for p in desktop_eoe desktop_eoe_6530m; do
-        [ -f "$DIST/$p.idb" ] && python3 -I "$HERE/irix-dist-extract.py" "$DIST" $p "$STAGE/root" "$R"
-    done
-    (cd "$STAGE/root" && find . \( -type f -o -type l \) | sed 's|^\./||' |
-        while read -r f; do [ -e "/irix/$f" ] || [ -L "/irix/$f" ] || echo "$f"; done) > "$STAGE/add"
-    tar -C "$STAGE/root" --owner=0 --group=0 -cf - -T "$STAGE/add" |
+# --- IRIX products unpacked above.  Desktop files: the RPM's 6.5.27m tree
+# has no toolchest, Xsession.dt, app-defaults, control panels, ...; only
+# files /irix doesn't have are added, so the RPM's stay as they are.
+if [ -d "$WORK/all" ]; then
+    echo ">>> copying $(du -sh "$WORK/all" | cut -f1) of IRIX products to /irix"
+    tar -C "$WORK/all" --owner=0 --group=0 -cf - . |
         tar -C /irix --no-overwrite-dir -xf -
-    echo "    $(wc -l < "$STAGE/add") files added to /irix"
+fi
+if [ -d "$WORK/add" ]; then
+    (cd "$WORK/add" && find . \( -type f -o -type l \) | sed 's|^\./||' |
+        while read -r f; do [ -e "/irix/$f" ] || [ -L "/irix/$f" ] || echo "$f"; done) > "$WORK/add.list"
+    tar -C "$WORK/add" --owner=0 --group=0 -cf - -T "$WORK/add.list" |
+        tar -C /irix --no-overwrite-dir -xf -
+    echo "    $(wc -l < "$WORK/add.list") desktop files added to /irix"
     # QuickTransit's postinstall replaces the programs in
     # scripts/unsupported-IRIX-binary-list with a script that says
     # "not currently supported".  One is /usr/lib/desktop/waitmap, which the
     # toolchest runs most commands through (Log Out among them); it works.
     for f in $(cat $QT/scripts/unsupported-IRIX-binary-list); do
-        if [ -f "$STAGE/root/$f" ] && grep -q "is not currently supported" "/irix/$f" 2>/dev/null; then
-            install -m 755 "$STAGE/root/$f" "/irix/$f"
+        if [ -f "$WORK/add/$f" ] && grep -q "is not currently supported" "/irix/$f" 2>/dev/null; then
+            install -m 755 "$WORK/add/$f" "/irix/$f"
             echo "    restored $f"
         fi
     done
-else
-    echo ">>> no IRIX dist given: desktop files skipped"
 fi
 
 echo ">>> done.  Desktop: startx $QT/bin/irix-desktop -- :0"
