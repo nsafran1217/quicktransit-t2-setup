@@ -8,8 +8,8 @@ toolchest (its menus launch programs, e.g. *Open Unix Shell* → winterm, and
 
 Everything it needs beyond `install.sh` is done by `install-extras.sh`:
 
-    ./install-extras.sh /path/to/irix/dist
-    startx /usr/QuickTransit/bin/irix-desktop -- :0
+    ./install-extras.sh <IRIX CD tars or dists>...    # see README.md
+    start4dwm-x11
 
 That is:
 
@@ -137,8 +137,10 @@ switches to another background it kills Twilight and sets its own pixmap.
 
 ## Starting the session
 
-    startx /usr/QuickTransit/bin/irix-desktop -- :0
+    start4dwm-x11                # X on :0, vt7; "start4dwm-x11 :1 vt8" for another
 
+which runs `startx /usr/QuickTransit/bin/irix-desktop -- :0 vt7` with
+`/usr/X11/bin` added to PATH (startx needs xinit and xauth from there),
 or, on an X server already running without a window manager,
 `DISPLAY=:0 /usr/QuickTransit/bin/irix-desktop`. The launcher starts
 rpcbind and fam if needed, sets HOME/USER/LOGNAME and `SHELL=/bin/sh`, and

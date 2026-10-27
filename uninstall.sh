@@ -11,7 +11,7 @@ done
 P='^/usr/QuickTransit/bin/QuickTransit'
 pkill -f "$P" && sleep 2
 pkill -KILL -f "$P" && sleep 1
-rm -f /etc/binfmt.d/quicktransit.conf
+rm -f /etc/binfmt.d/quicktransit.conf /usr/bin/start4dwm-x11
 rm -f /usr/lib/libstdc++.so.5 /usr/lib/libunwind.so.1 /usr/lib/libunwind-ia64.so.1 \
       /usr/lib/libunwind-ia64.so /usr/lib/nptl/librt.so
 rmdir /usr/lib/nptl 2>/dev/null || true

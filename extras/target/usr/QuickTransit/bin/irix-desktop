@@ -21,18 +21,34 @@ fi
 
 export HOME=${HOME:-/root} USER=${USER:-root} LOGNAME=${LOGNAME:-root} SHELL=/bin/sh
 cd "$HOME" || exit 1
+
+# Like xdm, end what the session left behind: fmserv outlives the X server,
+# and winterm's shells (DISPLAY=:0.0) ignore SIGTERM.  Also done when xinit
+# signals this script because the X server went away.  fam stays: it serves
+# every display.
+D=$(printf '%s\n' "$DISPLAY" | sed -E 's/(:[0-9]+)\.[0-9]+$/\1/; s/[.]/\\./g')
+cleanup() {
+    trap - EXIT HUP INT TERM
+    pids=
+    for p in $(pgrep -f '^/usr/QuickTransit/bin/QuickTransit '); do
+        case "$(tr '\0' ' ' < /proc/$p/cmdline 2>/dev/null)" in
+            *' /irix/usr/etc/fam '*) continue ;;
+        esac
+        tr '\0' '\n' < /proc/$p/environ 2>/dev/null |
+            grep -qE "^DISPLAY=$D(\.[0-9]+)?\$" && pids="$pids $p"
+    done
+    [ -n "$pids" ] || return 0
+    kill $pids 2>/dev/null
+    sleep 1
+    kill -KILL $pids 2>/dev/null
+    return 0
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
 # Xsession.dt starts everything in the background and ends with
 # "exec reaper", which sets _SGI_SESSION_PROPERTY on the root window and
 # exits.  Log Out (endsession) removes it; IRIX xdm then ends the session,
 # and so does this script.
 /irix/bin/sh /var/X11/xdm/Xsession.dt </dev/null
 /irix/bin/sh -c '/usr/bin/X11/xprop -root -exists _SGI_SESSION_PROPERTY' >/dev/null
-
-# Like xdm, end what the session left behind (fmserv outlives the X server).
-# fam stays: it serves every display.
-for p in $(pgrep -f '^/usr/QuickTransit/bin/QuickTransit '); do
-    case "$(tr '\0' ' ' < /proc/$p/cmdline 2>/dev/null)" in
-        *' /irix/usr/etc/fam '*) continue ;;
-    esac
-    tr '\0' '\n' < /proc/$p/environ 2>/dev/null | grep -qxF "DISPLAY=$DISPLAY" && kill $p
-done

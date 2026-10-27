@@ -73,7 +73,7 @@ directory, or a directory above it). Tested with 6.5.30:
     ./install-extras.sh "IRIX 6.5 Applications June 1998.tar.gz" \
         "IRIX 6.5.30 Installation Tools and Overlays (1 of 3).tar.gz" \
         "IRIX 6.5.30 Overlays (3 of 3).tar.gz"            # ~6 min
-    startx /usr/QuickTransit/bin/irix-desktop -- :0     # 4Dwm, toolchest, fm, ...
+    start4dwm-x11       # X on :0 (vt7) with 4Dwm, toolchest, fm, ...
     /irix/bin/sh -c "cd /usr/demos/General_Demos/atlantis && ./atlantis"  # IRIS GL
     /irix/usr/sbin/sfplay /usr/share/data/sounds/demos/Slogan.aiff    # audio
 
@@ -188,7 +188,9 @@ Added or changed by `install.sh`:
 Added or changed by `install-extras.sh` (all removed by `uninstall.sh` too):
 - `/usr/QuickTransit/bin/QuickTransit`: re-patched from `QuickTransit.orig`
   with `--extras` (md5 `e163ec53…`)
-- `/usr/QuickTransit/bin/irix-desktop`: session launcher
+- `/usr/QuickTransit/bin/irix-desktop`: session launcher (an X client)
+- `/usr/bin/start4dwm-x11`: starts X on `:0` (vt7) with that session;
+  arguments replace `:0 vt7`
 - `/usr/QuickTransit/lib/irix/lib32/libglxsync.so`, `libfakeci.so` (IRIX
   path `/usr/QuickTransit/lib32`): IRIX preload libraries
 - `/usr/QuickTransit/etc/QuickTransit.conf`: an `FU_RLDN32_LIST` line that

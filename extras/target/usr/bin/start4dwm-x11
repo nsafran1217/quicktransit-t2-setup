@@ -1,0 +1,14 @@
+#!/bin/sh
+# Start an X server running the IRIX desktop session (irix-desktop: 4Dwm,
+# toolchest, fm, ...).  Run as root from a console; it returns at toolchest
+# Desktop > Log Out.  Arguments go to the X server instead of ":0 vt7":
+#
+#   start4dwm-x11            # :0 on vt7
+#   start4dwm-x11 :1 vt8
+#
+# Installed by install-extras.sh.  startx needs xinit and xauth, which T2
+# keeps in /usr/X11/bin.
+PATH=$PATH:/usr/X11/bin
+export PATH
+[ $# -gt 0 ] || set -- :0 vt7
+exec startx /usr/QuickTransit/bin/irix-desktop -- "$@"

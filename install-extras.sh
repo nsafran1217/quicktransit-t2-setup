@@ -156,4 +156,4 @@ if [ -d "$WORK/add" ]; then
     done
 fi
 
-echo ">>> done.  Desktop: startx $QT/bin/irix-desktop -- :0"
+echo ">>> done.  Desktop: start4dwm-x11   (X on :0, vt7)"
