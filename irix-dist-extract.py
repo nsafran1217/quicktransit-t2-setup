@@ -11,11 +11,20 @@ Format, as found on the 6.5 media:
   * <product>.idb: one line per entry:
         type mode owner group dstpath srcpath subsystem [attrs...]
     type d = directory, f = file, l = symlink (target in symval(...)).
-    For files: off(N) size(S) cmpsize(C).  The subsystem's first two
-    components name the archive: demos.sw.atlantis -> demos.sw.
+    For files: off(N) size(S) cmpsize(C).  The archive is the product name
+    plus the subsystem's second component: demos.sw.atlantis -> demos.sw.
+    Overlay products keep the base subsystem names (desktop_eoe_6530m.idb
+    lists desktop_eoe.sw.envm, stored in desktop_eoe_6530m.sw).
   * archive: 13-byte header ("im001V630P00\\0"), then at each off():
     2-byte big-endian name length, the name, then the data: cmpsize bytes of
     compress(1) LZW data if cmpsize > 0, else size raw bytes.
+
+  * mach(...) limits an entry to some machines, e.g.
+    mach(GFXBOARD!=VOYAGER && GFXBOARD!=ODYSSEY) or mach(CPUBOARD=IP19
+    CPUBOARD=IP21) (spaces and || mean "or").  Several entries can install the
+    same file for different machines.  Entries are kept if they match MACHINE
+    below: QuickTransit reports an IP30 (Octane), taken here with MGRAS
+    graphics, as on a real Octane SI/SSI/MXI.
 
 Ownership is not applied (the tree is pushed as root:root afterwards).
 exitop()/postop() scripts are not run; they are printed for review.
@@ -26,6 +35,17 @@ import subprocess
 import sys
 
 ATTR = re.compile(r"(\w+)\(((?:[^()']|'[^']*')*)\)")
+MACHINE = {"CPUBOARD": "IP30", "CPUARCH": "R10000", "GFXBOARD": "MGRAS"}
+
+
+def mach_ok(expr):
+    """Evaluate an idb mach() expression against MACHINE."""
+    def term(t):
+        k, op, v = re.fullmatch(r"(\w+)(!=|=)(\S+)", t).groups()
+        return (MACHINE.get(k) == v) == (op == "=")
+    expr = re.sub(r"\s*&&\s*", "&", expr.strip())     # a && b -> a&b
+    alts = re.split(r"\|\||\s+", expr)
+    return any(all(term(t) for t in a.split("&")) for a in alts)
 
 
 def main():
@@ -42,6 +62,8 @@ def main():
         if want and not want.search(subsys):
             continue
         attrs = dict(ATTR.findall(line))
+        if "mach" in attrs and not mach_ok(attrs["mach"]):
+            continue
         for k in ("exitop", "postop", "preop", "removeop"):
             if k in attrs:
                 ops.append(f"{subsys} {k}: {attrs[k]}")
@@ -57,7 +79,9 @@ def main():
             os.symlink(attrs["symval"], path)
             nlink += 1
         elif typ == "f":
-            arch = ".".join(subsys.split(".")[:2])
+            # overlay images: product desktop_eoe_6530m, subsystem
+            # desktop_eoe.sw.x, archive desktop_eoe_6530m.sw
+            arch = product + "." + subsys.split(".")[1]
             if arch not in archives:
                 archives[arch] = open(os.path.join(dist, arch), "rb")
             a = archives[arch]

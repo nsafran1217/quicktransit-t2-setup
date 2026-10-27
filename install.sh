@@ -8,7 +8,8 @@
 # ISO and the SG0010228 update, plus libstdc++.so.5[.gz] if this kit doesn't
 # include it.  Subdirectories one level down are searched too.  T2 has no rpm,
 # so the RPMs are unpacked with bsdtar and their %post scriptlets are
-# reimplemented below.  Safe to re-run.
+# reimplemented below.  Safe to re-run; re-run install-extras.sh afterwards if
+# it was used, since this restores the vendor QuickTransit.conf and binary.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -48,14 +49,15 @@ echo ">>> QuickTransit 1.2.1 -> $QT"
 # symlink, which bsdtar refuses to extract through.
 bsdtar -xpf "$QT_RPM" -C / --exclude etc/init.d
 
-# --- Kit files: license, binfmt config, shim sources, fonts, fam.conf
+# --- Kit files: license, binfmt config, shim sources, fonts
 echo ">>> kit files"
 tar -C "$HERE/target" --owner=0 --group=0 -cf - . |
     tar -C / --no-overwrite-dir -xf -
 cp "$HERE/uninstall.sh" "$QT/uninstall.sh"
 
-# --- Binary fixes (see patch-quicktransit.py).  The vendor binary was just
-# re-extracted from the RPM; it is kept as QuickTransit.orig.
+# --- Binary fixes (see patch-quicktransit.py; install-extras.sh re-patches
+# with --extras).  The vendor binary was just re-extracted from the RPM; it is
+# kept as QuickTransit.orig.
 cp -p $QT/bin/QuickTransit $QT/bin/QuickTransit.orig
 python3 -I "$HERE/patch-quicktransit.py" $QT/bin/QuickTransit.orig $QT/bin/QuickTransit
 chmod 755 $QT/bin/QuickTransit
@@ -142,13 +144,5 @@ if ! grep -q '/irix/usr/lib/X11/fonts' /etc/X11/xorg.conf; then
         echo "WARNING: no Files section in /etc/X11/xorg.conf, font path not added" >&2
 fi
 
-# --- T2's rpcbind can't start its TCP/UDP listeners: it looks up the service
-# names "rpcbind" and "portmapper", but /etc/services has no aliases on the
-# sunrpc lines.  Add them (original kept as /etc/services.pre-quicktransit).
-# Needed by IRIX fam (and so the fm file manager).
-if ! grep -qE '^sunrpc[[:space:]]+111/tcp[[:space:]]+portmapper' /etc/services; then
-    cp -p /etc/services /etc/services.pre-quicktransit
-    sed -i -E 's|^(sunrpc[[:space:]]+111/(tcp\|udp))([[:space:]])|\1 portmapper rpcbind\3|' /etc/services
-fi
-
 echo ">>> done.  Test: /irix/bin/sh -c 'uname -a'"
+echo "    Optional desktop/fam/IRIS GL extras: ./install-extras.sh <irix-dist-dir>"

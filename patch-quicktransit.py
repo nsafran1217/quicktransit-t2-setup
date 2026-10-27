@@ -1,11 +1,21 @@
 #!/usr/bin/env python3
 """
-Binary patch for QuickTransit 1.2.1 (/usr/QuickTransit/bin/QuickTransit,
-md5 d6ece54e5fff0cf01da7047343f466f7): fix IRIX utime()/utimets() on
-current Linux kernels.
+Binary patches for QuickTransit 1.2.1 (/usr/QuickTransit/bin/QuickTransit,
+vendor md5 d6ece54e5fff0cf01da7047343f466f7).  The input must always be the
+vendor binary; the output gets either set:
 
-The bug
--------
+  base     (install.sh)        fixes 1-2: things that broke on current
+                                kernels / X servers.  With them QuickTransit
+                                works as it did on SLES 9.
+  --extras (install-extras.sh)  base plus fixes 3-6: QuickTransit bugs that
+                                were there on SLES 9 too, found while getting
+                                fam, fm and the IRIX desktop session to run.
+
+Usage:  patch-quicktransit.py [--extras] <vendor-binary> <out>
+
+Fix 1: IRIX utime()/utimets() on current Linux kernels (base)
+==============================================================
+
 IRIX_utime and IRIX_utimets issue the ia64 `utimes` syscall (1036) directly
 (their own `break 0x100000` stub, ia64SC_2arg), which takes
 `struct timeval tv[2]`.  But the helpers that build the argument,
@@ -19,9 +29,7 @@ Kernels from 2004 copied tv_usec into the inode without checking it.
 Current kernels reject tv_usec >= 1000000 with EINVAL, so `touch -t`,
 `touch -r`, `cp -p`, `tar x` and the rest fail with "Invalid argument".
 
-The fix
--------
-Make both helpers write a proper timeval[2]: {atime, 0}, {mtime, 0}.
+Fix: make both helpers write a proper timeval[2]: {atime, 0}, {mtime, 0}.
 Nothing in either function moves.  In each one, three early bundles have
 free nop.f / nop.i slots, which are used to zero the two tv_usec words, and
 the post-increment of the first tv_sec store goes from 8 to 16:
@@ -36,31 +44,8 @@ r2 is scratch and not otherwise live at those points.  r32 is the timeval*
 argument.  The caller's buffer is sp+16 inside a 512-byte scratch area
 (the path buffer starts at sp+528), so 32 bytes fit.
 
-Second fix: IRIX sysconf(_SC_AUDIT) / sysconf(_SC_INF)
--------------------------------------------------------
-syssgi(SGI_SYSCONF, name) dispatches names 0..31 through a table of
-self-relative offsets at 0x400000000079f188 (loaded via gp+13304).
-QuickTransit maps the other Trusted-IRIX names (_SC_ACL 25, _SC_MAC 28,
-_SC_CAP 29, _SC_IP_SECOPTS 30) to a stub returning 0 (0x4000000000616b00),
-but _SC_AUDIT 26 and _SC_INF 27 hit "Unsupported SGI_SYSCONF request" and
-the process exits.  IRIX fam calls sysconf(_SC_AUDIT) at startup, so fam,
-and with it the fm file manager, dies.  Entries 26 and 27 are pointed at the
-same return-0 stub, which is what IRIX itself returns without SAT.
-
-Third fix: unsupported syssgi() subcalls are no longer fatal
-------------------------------------------------------------
-IRIX_syssgi's default case (+0x3e0, 0x4000000000615da0) calls
-reportError(severity=1, ...), which prints "Unsupported subcall: N" and
-exits the process.  fam calls satwrite() -> syssgi(SGI_SATWRITE=75)
-unconditionally; a SAT-less IRIX kernel just fails that call.  Severity 0
-prints the same message and returns.  IRIX_syssgi then returns through its
-common exit with the values set at entry (result 0, errno 0).  So unknown
-syssgi subcalls now log and return 0 instead of killing the program.
-(The SGI_SYSCONF / SGI_PATHCONF error paths join later at +0x410 with their
-own severity and are unchanged.)
-
-Fourth fix: clamp FBConfig lists to 255 instead of aborting
-------------------------------------------------------------
+Fix 2: clamp FBConfig lists to 255 instead of aborting (base)
+==============================================================
 RC_glXGetFBConfigs and RC_glXChooseFBConfigSGIX call the host function, then
 abort ("GLbindStub: ... returning too many FBConfigs (%d), aborting!") if it
 returned more than 255 configs, the size of QuickTransit's tables.  The
@@ -71,7 +56,47 @@ with:
       br <the compare bundle>
 so the caller sees the first 255 configs and carries on.
 
-Usage:  patch-quicktransit.py <in> <out>
+Fix 3: IRIX sysconf(_SC_AUDIT) / sysconf(_SC_INF) (extras)
+==========================================================
+syssgi(SGI_SYSCONF, name) dispatches names 0..31 through a table of
+self-relative offsets at 0x400000000079f188 (loaded via gp+13304).
+QuickTransit maps the other Trusted-IRIX names (_SC_ACL 25, _SC_MAC 28,
+_SC_CAP 29, _SC_IP_SECOPTS 30) to a stub returning 0 (0x4000000000616b00),
+but _SC_AUDIT 26 and _SC_INF 27 hit "Unsupported SGI_SYSCONF request" and
+the process exits.  IRIX fam calls sysconf(_SC_AUDIT) at startup, so fam,
+and with it the fm file manager, dies.  Entries 26 and 27 are pointed at the
+same return-0 stub, which is what IRIX itself returns without SAT.
+
+Fix 4: unsupported syssgi() subcalls are no longer fatal (extras)
+=================================================================
+IRIX_syssgi's default case (+0x3e0, 0x4000000000615da0) calls
+reportError(severity=1, ...), which prints "Unsupported subcall: N" and
+exits the process.  fam calls satwrite() -> syssgi(SGI_SATWRITE=75)
+unconditionally; a SAT-less IRIX kernel just fails that call.  Severity 0
+prints the same message and returns.  IRIX_syssgi then returns through its
+common exit with the values set at entry (result 0, errno 0).  So unknown
+syssgi subcalls now log and return 0 instead of killing the program.
+(The SGI_SYSCONF / SGI_PATHCONF error paths join later at +0x410 with their
+own severity and are unchanged.)
+
+Fix 5: setgroups() succeeds as a no-op (extras)
+===============================================
+IRIX libc's setgroups(n, list) is syssgi(SGI_SETGROUPS=40, n, list).
+IRIX_syssgi's case 40 (+0x1440) logs "SGI_SETGROUPS ignored" (severity 0)
+but then sets the result to -1 (`mov r42=-1`, slot 2 of +0x1450), so the
+caller sees a failure.  IRIX fam calls setgroups() for every client
+connection and exits when it fails, which leaves fm, iconcatalog and the
+desktop icons without fam.  The result is changed to 0, so the call is
+ignored as the message says.  Supplementary groups are left unchanged.
+
+Fix 6: sysconf(_SC_CHILD_MAX) and sysconf(_SC_OPEN_MAX) (extras)
+================================================================
+The SGI_SYSCONF handlers return fixed values, the old POSIX minimums:
+_SC_CHILD_MAX 6 (+0x11a0) and _SC_OPEN_MAX 16 (+0x11d0).  IRIX sh sizes
+its job table from CHILD_MAX, so a script with more than five background
+jobs running at once dies with "too many jobs".  The IRIX desktop session
+(Xsession.dt) is such a script.  CHILD_MAX becomes 1034 (IRIX 6.5's default
+maxup) and OPEN_MAX 1024 (what QuickTransit reports for RLIMIT_NOFILE).
 """
 import hashlib
 import sys
@@ -205,13 +230,8 @@ def patch_fbconfig_clamp(data, cmp_b, abort_b, rp, rc, rm, rmsg, gpoff):
     put(abort_b + 0x10, T_MIB_S, [NOP_M, NOP_I, br_rel(abort_b + 0x10, cmp_b)])
 
 
-def main():
-    src, dst = sys.argv[1:3]
-    data = bytearray(open(src, "rb").read())
-    md5 = hashlib.md5(data).hexdigest()
-    if md5 != ORIG_MD5:
-        sys.exit(f"{src}: md5 {md5}, expected unpatched {ORIG_MD5}")
-
+def patch_base(data):
+    """Fixes 1-2."""
     # self-check the encoders against instructions present in the binary
     _, s = split(bytes(data[0x592540:0x592550]))
     assert s[1] == st8_imm(32, 2, 8)                 # st8 [r32]=r2,8
@@ -219,20 +239,32 @@ def main():
     assert s[2] == adds(3, 4, 33)                    # adds r3=4,r33
     _, s = split(bytes(data[0x592570:0x592580]))
     assert s[0] == st8(32, 2)                        # st8 [r32]=r2
+    _, sl = split(bytes(data[0x243fc0:0x243fd0]))
+    assert sl[0] == st4(35, 33), "st4 encoding"      # st4 [r35]=r33
+    _, sl = split(bytes(data[0x241e80:0x241e90]))
+    assert sl[2] == br_rel(0x4000000000241e80, 0x4000000000241d10), "br encoding"
 
-    # mangleIRIXToLinuxUtimbuf: out=r32, sec in r2, store bundle +0x50
+    # 1. mangleIRIXToLinuxUtimbuf: out=r32, sec in r2, store bundle +0x50
     patch_func(data, 0x40000000005924f0, 32, 2, 0x50)
-    # mangleIRIXToLinuxUtimetspec: out=r34 (copy of r32), sec in r11, +0xa0
+    #    mangleIRIXToLinuxUtimetspec: out=r34 (copy of r32), sec in r11, +0xa0
     patch_func(data, 0x4000000000592610, 34, 11, 0xA0)
-    # SGI_SYSCONF: _SC_AUDIT (26), _SC_INF (27) -> return 0
+    # 2. FBConfig clamp
+    for c in FBCONFIG_CLAMPS:
+        patch_fbconfig_clamp(data, *c)
+
+
+def patch_extras(data):
+    """Fixes 3-6."""
     import struct
+    # 3. SGI_SYSCONF: _SC_AUDIT (26), _SC_INF (27) -> return 0
     for ok in (25, 28, 29, 30):                      # sanity: existing stubs
         e = SYSCONF_TABLE + 8 * ok
         o = e - TEXT_VADDR
         assert e + struct.unpack("<q", data[o:o + 8])[0] == SYSCONF_RET0
     patch_sysconf(data, 26)
     patch_sysconf(data, 27)
-    # IRIX_syssgi default case: reportError severity 1 (fatal) -> 0 (warn)
+
+    # 4. IRIX_syssgi default case: reportError severity 1 (fatal) -> 0 (warn)
     a = 0x4000000000615da0
     o = a - TEXT_VADDR
     t, sl = split(bytes(data[o:o + 16]))
@@ -240,13 +272,39 @@ def main():
     sl[0] = addl(55, 0, 0)                           # mov r55=0
     data[o:o + 16] = join(t, sl)
 
-    # encoder self-checks against instructions in the binary
-    _, sl = split(bytes(data[0x243fc0:0x243fd0]))
-    assert sl[0] == st4(35, 33), "st4 encoding"          # st4 [r35]=r33
-    _, sl = split(bytes(data[0x241e80:0x241e90]))
-    assert sl[2] == br_rel(0x4000000000241e80, 0x4000000000241d10), "br encoding"
-    for c in FBCONFIG_CLAMPS:
-        patch_fbconfig_clamp(data, *c)
+    # 5. IRIX_syssgi SGI_SETGROUPS: result -1 -> 0
+    a = 0x4000000000616e10
+    o = a - TEXT_VADDR
+    t, sl = split(bytes(data[o:o + 16]))
+    assert sl[1] == addl(56, 2, 0) and sl[2] == addl(42, -1, 0), hex(a)
+    sl[2] = addl(42, 0, 0)                           # mov r42=r0
+    data[o:o + 16] = join(t, sl)
+
+    # 6. SGI_SYSCONF _SC_CHILD_MAX 6 -> 1034, _SC_OPEN_MAX 16 -> 1024
+    for a, old, new in ((0x4000000000616b60, 6, 1034),
+                        (0x4000000000616b90, 16, 1024)):
+        o = a - TEXT_VADDR
+        t, sl = split(bytes(data[o:o + 16]))
+        assert sl[1] == addl(42, old, 0), hex(a)     # mov r42=old
+        sl[1] = addl(42, new, 0)
+        data[o:o + 16] = join(t, sl)
+
+
+def main():
+    args = sys.argv[1:]
+    extras = "--extras" in args
+    args = [a for a in args if a != "--extras"]
+    if len(args) != 2:
+        sys.exit("usage: patch-quicktransit.py [--extras] <vendor-binary> <out>")
+    src, dst = args
+    data = bytearray(open(src, "rb").read())
+    md5 = hashlib.md5(data).hexdigest()
+    if md5 != ORIG_MD5:
+        sys.exit(f"{src}: md5 {md5}, expected the vendor binary {ORIG_MD5}")
+
+    patch_base(data)
+    if extras:
+        patch_extras(data)
 
     open(dst, "wb").write(data)
     print(f"{dst}: md5 {hashlib.md5(data).hexdigest()}")

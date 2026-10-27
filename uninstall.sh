@@ -1,5 +1,6 @@
 #!/bin/sh
-# Remove everything install.sh put on the system.  Run as root on it:
+# Remove everything install.sh and install-extras.sh put on the system.  Run
+# as root on it:
 #   ./uninstall.sh        (also installed as /usr/QuickTransit/uninstall.sh)
 set -x
 for e in irix32 irix64; do
