@@ -17,9 +17,13 @@
  * ALSA only ever gets whole periods.  A resampling plug converts a period
  * at a time, and the last partial period of a sound would sit in the plug,
  * counted as played, until an underrun throws it away.  So a partial
- * period is held here (and counted as queued) until more data completes
- * it, or until the device is down to its last period, when it goes out
- * padded with silence.
+ * period is held here until more data completes it, or until the program
+ * has stopped writing and the device is down to its last period, when it
+ * goes out padded with silence.  Padding while the program still streams
+ * would put gaps in the middle of the sound.  Held frames don't count as
+ * queued: SDL, for one, keeps its queue only half to fully filled, and with
+ * a large period (dmix) the held part would be most of that, leaving ALSA
+ * nearly dry.
  *
  * QTAUDIO_DEBUG=1 prints the ALSA configuration of each port and every
  * underrun.
@@ -31,6 +35,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 /* Formats, as passed by the IRIX side (libaudio.c QTA_FMT_*). */
@@ -41,13 +46,14 @@ enum { FMT_S8 = 1, FMT_S16 = 2, FMT_S24 = 3, FMT_FLOAT = 4, FMT_DOUBLE = 5 };
 static struct port {
     snd_pcm_t *pcm;
     pthread_mutex_t mu;		/* write and flush vs. a polling thread */
-    int fmt, channels;
+    int fmt, channels, rate;
     unsigned inbytes;		/* IRIX-side bytes per frame */
     unsigned outbytes;		/* ALSA-side bytes per frame */
     double scale;		/* full scale/floatmax for float and double */
     snd_pcm_uframes_t bufsize, period;
     unsigned char *hold;	/* one period, ALSA format */
     long held;			/* frames in hold */
+    long long last;		/* time of the last write, ns */
     int32_t *conv;		/* one period, float and double ports */
 } port[NPORT];
 
@@ -131,9 +137,11 @@ int RC_qta_open(int rate, int channels, int fmt, int queue_frames,
     if (!dev || !*dev)
         dev = "default";
 
+    /* At least 80 ms: dmix fixes the period (often ~20 ms), and a buffer
+       of two periods underruns under QuickTransit. */
     latency = (unsigned)((long long)queue_frames * 1000000 / rate);
-    if (latency < 40000)
-        latency = 40000;
+    if (latency < 80000)
+        latency = 80000;
     if (latency > 1000000)
         latency = 1000000;
 
@@ -168,6 +176,7 @@ int RC_qta_open(int rate, int channels, int fmt, int queue_frames,
     pthread_mutex_init(&p->mu, NULL);
     p->fmt = fmt;
     p->channels = channels;
+    p->rate = rate;
     p->inbytes = samplebytes[fmt] * channels;
     p->outbytes = snd_pcm_frames_to_bytes(pcm, 1);
     p->scale = 2147483647.0 / fmax_from_bits(floatmax_bits);
@@ -285,19 +294,41 @@ static long alsa_filled(struct port *p)
     return p->bufsize - avail;
 }
 
+static long long now(void)
+{
+    struct timespec t;
+
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec * 1000000000LL + t.tv_nsec;
+}
+
 /*
- * When ALSA is down to its last period, nothing more is coming in time:
- * send the held partial period, and start a port that never reached the
- * start threshold (IRIX plays whatever is written).  While a program
- * streams, ALSA holds more than a period and this does nothing.
+ * Send the held partial period, padded, and start a port that never
+ * reached the start threshold (IRIX plays whatever is written).
  */
 static void kick(struct port *p)
 {
-    if (p->held && alsa_filled(p) <= (long)p->period) {
-        flush(p);
-        if (snd_pcm_state(p->pcm) == SND_PCM_STATE_PREPARED)
-            snd_pcm_start(p->pcm);
-    }
+    flush(p);
+    if (snd_pcm_state(p->pcm) == SND_PCM_STATE_PREPARED)
+        snd_pcm_start(p->pcm);
+}
+
+/*
+ * From alGetFilled.  If ALSA has run dry, or no write came for a period's
+ * time and ALSA is down to its last period, nothing more is coming in
+ * time, so the held frames go out.  Then a program waiting for
+ * alGetFilled() == 0 hears them before it sees 0.
+ */
+static void kick_idle(struct port *p)
+{
+    long f;
+
+    if (!p->held)
+        return;
+    f = alsa_filled(p);
+    if (f == 0 || (f <= (long)p->period &&
+        now() - p->last >= (long long)p->period * 1000000000 / p->rate))
+        kick(p);
 }
 
 /*
@@ -308,11 +339,15 @@ int RC_qta_write(int h, const unsigned char *buf, int frames)
 {
     struct port *p = getport(h);
     long done = 0, n;
-    int err = 0;
+    int err = 0, idle;
 
     if (!p)
         return -EBADF;
     pthread_mutex_lock(&p->mu);
+    /* Into an empty device (first write, a one-shot sound, or after an
+       underrun) nothing may follow in time: send the tail now.  While the
+       program streams, hold it for the next write. */
+    idle = alsa_filled(p) == 0;
     while (done < frames && !err) {
         n = frames - done;
         if (n > (long)p->period)
@@ -331,13 +366,14 @@ int RC_qta_write(int h, const unsigned char *buf, int frames)
             err = push(p, buf + done * p->inbytes, n);
         done += n;
     }
-    if (!err)
+    if (!err && idle)
         kick(p);
+    p->last = now();
     pthread_mutex_unlock(&p->mu);
     return err < 0 ? err : done;
 }
 
-/* Frames queued and not yet played (alGetFilled). */
+/* Frames queued in ALSA and not yet played (alGetFilled). */
 int RC_qta_filled(int h)
 {
     struct port *p = getport(h);
@@ -346,9 +382,9 @@ int RC_qta_filled(int h)
     if (!p)
         return -EBADF;
     if (pthread_mutex_trylock(&p->mu) != 0)	/* a write is in progress */
-        return alsa_filled(p) + p->held;
-    kick(p);
-    f = alsa_filled(p) + p->held;
+        return alsa_filled(p);
+    kick_idle(p);
+    f = alsa_filled(p);
     pthread_mutex_unlock(&p->mu);
     return f;
 }

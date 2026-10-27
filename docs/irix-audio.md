@@ -115,17 +115,25 @@ Not emulated:
   converted to host `S32`. Not float: a `plug` in front of dmix finds no
   configuration for float at 44.1 kHz (aplay fails the same way), but
   takes `S32` at any rate.
-- The ALSA buffer follows the port's queue size (40 ms to 1 s). Filled and
+- The ALSA buffer follows the port's queue size (80 ms to 1 s; under 80
+  ms, a dmix buffer of two ~20 ms periods underran constantly). Filled and
   fillable come from ALSA's queue, so a program that paces itself on
   `alGetFillable` keeps about one queue's worth buffered.
 - **Whole periods only.** ALSA's resampler (in `plug`) converts a period at
   a time. The last partial period of a sound sits in the plug, counted as
   played, until an underrun throws it away. Without a fix, every sound that
   doesn't end on a period boundary lost its tail: 0.15 s of a 1 s tone in
-  testing. `libRCAudio` holds a partial period itself (and counts it as
-  queued) until more data completes it. When ALSA is down to its last
-  period, it sends the partial period padded with silence. Programs that
-  close a port after waiting for `alGetFilled() == 0` hear everything.
+  testing. `libRCAudio` holds a partial period itself until more data
+  completes it, and sends it padded with silence once the program stops
+  writing: on a write into an empty device (a one-shot sound), or, when
+  the program polls `alGetFilled`, once ALSA has run dry or is down to its
+  last period with no write for a period's time. Programs that close a
+  port after waiting for `alGetFilled() == 0` hear everything.
+- Held frames don't count as filled. SDL keeps its queue between half and
+  completely full (46 ms for secondreality). With dmix's 940-frame periods,
+  counting the held part left ALSA nearly empty: 64 underruns in 40 s.
+  Padding mid-stream, as an earlier version did whenever ALSA was down to
+  a period, put gaps in the sound as well.
 - `alClosePort` discards whatever is still queued. Programs that want their
   sound to finish wait for `alGetFilled()` to reach 0 first. If only a held
   partial period is left, it is played before the port closes.
@@ -162,6 +170,7 @@ Results on pople, 2026-10-27, with ALSA `default` = `plug` → HDMI:
 | two programs on the exclusive HDMI `hw` device | second `alOpenPort` fails cleanly, first keeps playing |
 | two `altone`s and an `aplay` at once through `plug` → dmix on HDMI | all three play; every format opens (float, after the S32 change) |
 | `aplay` and two `sfplay`s at once, `default` = the dmix example above on a USB headset | all three play; the IRIX ports get 940-frame periods |
+| secondreality on the real X server, same dmix `default`, 40 s | no underruns (ALSA buffer 3763 frames, 85 ms) |
 
 ## Background: the old workaround
 
