@@ -1,6 +1,7 @@
 #!/bin/bash
 # Optional additions on top of install.sh: the IRIX desktop session (4Dwm,
-# toolchest, fm, fam) and IRIS GL programs.  Run as root, after install.sh:
+# toolchest, fm, fam), IRIS GL programs and IRIX audio.  Run as root, after
+# install.sh:
 #
 #   ./install-extras.sh [<irix-dist-dir>]
 #
@@ -53,6 +54,24 @@ CONF=$QT/etc/QuickTransit.conf
 sed -i '/^# install-extras.sh$/d; /^FU_RLDN32_LIST=/d' $CONF
 printf '%s\n' "# install-extras.sh" \
     "FU_RLDN32_LIST=$L/libfakeci.so:$L/libglxsync.so:$L/libX11_hook.so:$L/libXi_hook.so:DEFAULT" >> $CONF
+
+# --- IRIX audio.  SGI's libaudio drives the hdsp kernel driver, which
+# QuickTransit doesn't emulate.  The kit's libaudio.so (IRIX n32, prebuilt
+# in extras/target) calls libRCAudio.so (native, built here) through
+# QuickTransit's native-call binding, and that plays through ALSA's default
+# device.  SGI's library is kept as libaudio.so.1.sgi.  docs/irix-audio.md.
+echo ">>> IRIX audio"
+if [ -f /usr/include/alsa/asoundlib.h ]; then
+    gcc -O2 -Wall -shared -fPIC -o $QT/lib/ia64/libRCAudio.so.new \
+        "$HERE/extras/src/irixaudio/rcaudio.c" -lasound
+    mv -f $QT/lib/ia64/libRCAudio.so.new $QT/lib/ia64/libRCAudio.so
+    A=/irix/usr/lib32/libaudio.so.1
+    [ -e $A.sgi ] || mv $A $A.sgi
+    cp $QT/lib/irix/lib32/libaudio.so $A.new
+    mv -f $A.new $A
+else
+    echo "    no ALSA headers (alsa-lib): IRIX audio skipped"
+fi
 
 # --- T2's rpcbind can't start its TCP/UDP listeners: it looks up the service
 # names "rpcbind" and "portmapper", but /etc/services has no aliases on the

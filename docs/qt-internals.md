@@ -99,30 +99,99 @@ byte-swapped.
 
 ## Native library binding ("SCall")
 
-This is how QuickTransit runs IRIX `libmpi`/`libsma` calls as native ia64
-code. The IRIX-side stub libraries in `/usr/QuickTransit/lib/irix/lib*/` contain no
-real MIPS code for those functions; each function is a marker block:
+This is how QuickTransit runs IRIX `libmpi`/`libsma` calls, and its own GL
+and X11 hooks, as native ia64 code. It works for third-party libraries too,
+without patching QuickTransit: the kit's IRIX audio uses it
+([irix-audio.md](irix-audio.md), sources in `extras/src/irixaudio/`).
+Verified 2026-10-27 with a probe: signed and unsigned ints, a pointer and a
+negative return value all came through correctly. A blocking native call in
+one IRIX thread doesn't stall the program's other threads.
 
-    7c000002                 marker (an unused MIPS opcode)
-    02000000                 (flags?)
-    "RC_MPI_Send\0" padded   native symbol to call
-    00010090 00014030 ...    one descriptor word per argument
-    01008050                 return-value descriptor
-    7c000002                 end marker
-    03e00008 00000000        jr ra; nop
+The IRIX-side stub library contains no real MIPS code for these functions.
+Each one is a marker block that the translator
+(`MIPS4IRConstructor::SCall_marker`, `0x40000000003e1390`) replaces with a
+native call. There are two kinds:
 
-`MIPS4IRConstructor::SCall_marker` recognises the block when it translates
-the code. It then `dlopen`s a target library from `/usr/QuickTransit/lib/ia64/`
-(`libRCMPI.so`, `libRCSMA.so`) and emits a direct native call to the named
-symbol. The GL and X11 bridges (`RC_gl*`, `RC_glX*`, `libRCX11`) are built
-into the QuickTransit binary itself and use the same `RC_` naming.
+    library declaration              function
+    7c000000                         7c000002          marker (unused MIPS opcode)
+    02000000                         02000000          option (same in o32, n32, n64)
+    "libRCMPI.so\0" padded           "RC_MPI_Send\0" padded
+    7c000000                         00014030 ...      one word per argument
+    03e00008 00000000  jr ra; nop    01008050          return value
+                                     7c000002
+                                     03e00008 00000000 jr ra; nop
 
-Not yet worked out: how the target library is chosen for a given stub, and
-the bit layout of the argument/return descriptor words. `SCall_marker` and
-the libmpi stubs (hundreds of examples) are the places to look.
+**Library declaration.** When the declaration is translated, which happens
+the first time it runs, `SCall_marker` looks at the name:
+- `INBUILT_<version>` binds to functions inside the QuickTransit binary
+  (the GL and X11 hooks; the version is checked against
+  `RCGL_LibraryVersion`).
+- Anything else is `dlopen`ed as `"%s/%s"`, with
+  `FuseConfig::fuTargetNBLibraryPath` (config option
+  `FU_TARGETNBLIBRARY_PATH`, default `/usr/QuickTransit/lib/ia64`) and
+  `RTLD_LAZY|RTLD_GLOBAL`. The handle goes onto a list. `libRCMPI` and
+  `libRCSMA` get extra special-casing, but any name works.
 
-This mechanism would allow:
-- IRIX `libaudio` → ALSA,
+Function symbols are then looked up in every library on that list ("Cannot
+find symbol '%s' in any library to native bind to!"). So the stub library
+has to run its declaration before any function stub is first called:
+`X11Hook_initLibrary` does that, and the kit's libaudio calls its
+declaration stub once before its first native call.
+
+**Argument and return words.** An argument word is
+`MIPS register number << 14 | type`:
+
+| Register field | Source |
+|---|---|
+| 4–11 (`0x10000`–`0x2c000`) | integer argument registers a0–a7 |
+| 13, 14, ... (`0x34000`, ...) | FP argument registers (n32 passes FP args by position, from `$f12`) |
+| 29 (`0x74000`) | stack (`$sp`), in order |
+
+| Type | Meaning |
+|---|---|
+| `0x30` | signed int |
+| `0x50` | unsigned int |
+| `0x90` | pointer (IRIX pointers are passed as they are: memory is identity-mapped) |
+| `0x70` / `0x80` | float / double |
+
+QuickTransit's own stubs mostly start at a1 (`0x14xxx`) and leave a0 out
+(`RC_XOpenDisplay(char*)` is `00014090 01008050`, and the native function
+takes one argument). `RC_MPI_Symbol_setup` starts at a0 (`00010090`).
+Either works.
+
+The return word is `01008050` (v0) in 2,769 of the 2,800 stubs. The others
+are `01030070`/`01030080` (float/double in `$f0`, SHMEM) and a few odd ones
+in o32 `libX11_hook`. The native `int` result arrives in v0 sign-extended.
+The kit declares its stubs as returning `long long` in C and truncates, so
+it doesn't depend on that.
+
+Writing stubs with the GNU assembler (n32, from the SGUG binutils):
+
+    .abicalls
+    .set noreorder
+    qta_libdecl:  .word 0x7c000000, 0x02000000
+                  .asciz "libRCAudio.so"
+                  .align 2
+                  .word 0x7c000000
+                  jr $31
+                  nop
+    qta_write:    .word 0x7c000002, 0x02000000
+                  .asciz "RC_qta_write"
+                  .align 2
+                  .word 0x10030, 0x14090, 0x18030    # int, pointer, int
+                  .word 0x01008050, 0x7c000002
+                  jr $31
+                  nop
+
+Mark the stubs `.hidden` so the library doesn't export them. On the
+native side, keep host pointers away from the 32-bit IRIX code: hand out
+small integer handles instead.
+
+Not yet worked out: the stack-argument encoding in detail (the low nibble
+is 5 in `0x74035`/`0x74055`/`0x74095`), and calls back from native code
+into IRIX code.
+
+This mechanism could also carry:
 - an IRIS GL implementation (see [iris-gl.md](iris-gl.md)),
 - any other IRIX library whose work is better done natively.
 

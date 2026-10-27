@@ -158,8 +158,10 @@ The background icons show `$HOME/Desktop`.
 
 - **Two background icons have labels but no picture:** the home directory
   and the host's `/root/Desktop/.directory` (a KDE file). Not investigated.
-- **No audio:** `audiostate` reports "This machine has no audio driver at
-  all".
+- **No IRIX audio driver:** `audiostate` reports "This machine has no
+  audio driver at all", and the audio control panels don't work. Programs
+  using the Audio Library play through ALSA with `install-extras.sh`
+  ([irix-audio.md](irix-audio.md)).
 - **"Eject Media"** in the toolchest is greyed out (no sysadm catalog
   installed).
 - **Don't overwrite a library in place** while IRIX programs use it (e.g.

@@ -50,18 +50,19 @@ be re-run safely (re-run `install-extras.sh` afterwards if you use it). To
 remove everything: `./uninstall.sh` (a copy is also left at
 `/usr/QuickTransit/uninstall.sh`).
 
-### Optional: extras (IRIX desktop, fam, IRIS GL)
+### Optional: extras (IRIX desktop, fam, IRIS GL, audio)
 
 `install-extras.sh` adds what the full IRIX desktop session and IRIS GL
-programs need, on top of `install.sh`. These go beyond the 2005 product:
-more QuickTransit binary fixes, IRIX-side preload libraries, and desktop
-files that the IRIX RPM leaves out. The files come from IRIX 6.5 media, a
+programs need, and IRIX audio through ALSA, on top of `install.sh`. These
+go beyond the 2005 product: more QuickTransit binary fixes, IRIX-side
+libraries, and desktop files that the IRIX RPM leaves out. The files come from IRIX 6.5 media, a
 `dist` directory with `desktop_eoe.idb` (6.5.30 with its `_6530m` overlays
 was tested):
 
     ./install-extras.sh /path/to/dist     # ~1 min
     startx /usr/QuickTransit/bin/irix-desktop -- :0     # 4Dwm, toolchest, fm, ...
     /irix/bin/sh -c "cd /usr/demos/General_Demos/atlantis && ./atlantis"  # IRIS GL
+    /irix/usr/sbin/sfplay /usr/share/data/sounds/demos/Slogan.aiff    # audio
 
 Without the `dist` argument the desktop files are skipped. What it does
 and why: [Extras](#extras-install-extrassh) below, and
@@ -107,7 +108,7 @@ Run demos from their own directory, as their `RUN` scripts do:
 |---|---|
 | Work | `sh`, `bash`, `uname`, `xterm`, `xclock`, `jot`, `4Dwm`, `winterm`, `touch`, `cp -p`, `tar` through pipes, `glxinfo`, `ivview`, `noof`, `bongo`, `glfalls`; demos `ideas`, `cycles`, `tex_cube` |
 | Work with options | `perfly`: needs `-m 0 -P 2` (see known issues). In its window, `p` cycles the frame phase and `f`/`F` change the target rate. |
-| Work with `install-extras.sh` | the desktop session (`irix-desktop`: toolchest, `fm`, background icons with their labels, Icon Catalog, Twilight and the other backgrounds); IRIS GL programs (buttonfly, atlantis, newton; see [docs/iris-gl.md](docs/iris-gl.md)) |
+| Work with `install-extras.sh` | the desktop session (`irix-desktop`: toolchest, `fm`, background icons with their labels, Icon Catalog, Twilight and the other backgrounds); IRIS GL programs (buttonfly, atlantis, newton; see [docs/iris-gl.md](docs/iris-gl.md)); audio output from n32 programs (`sfplay`, `playaiff`, SDL programs; see [docs/irix-audio.md](docs/irix-audio.md)) |
 | Untested | bzflag, mirrors, MIDIblob, vroom, pointblank, mekton, Intersim/VisFly; imaging tools (`imgview`, `movieplayer`, ...) |
 | Don't work | IRIS GL programs without `install-extras.sh`: crash in `glXCreateContext` (see known issues). `flight` crashes even with it. `gr_osview` (reads kernel memory). |
 
@@ -120,6 +121,7 @@ More documentation:
 - [docs/irix-desktop.md](docs/irix-desktop.md): running the IRIX desktop
   session (4Dwm, toolchest, fm)
 - [docs/iris-gl.md](docs/iris-gl.md): IRIS GL status and what's needed
+- [docs/irix-audio.md](docs/irix-audio.md): IRIX audio through ALSA
 - [docs/qt-internals.md](docs/qt-internals.md): QuickTransit's syscall table,
   native-library binding and config options, for extending it
 
@@ -131,10 +133,10 @@ More documentation:
 | `libstdc++.so.5.gz` | gcc 3.3 C++ runtime QuickTransit links against (from SLES 9 ia64) |
 | `patch-quicktransit.py` | binary fixes to the QuickTransit executable (problems 6 and 7; `--extras` adds E1) |
 | `target/` | files `install.sh` copies as-is to `/` |
-| `install-extras.sh`, `extras/target/` | optional desktop / IRIS GL extras, and the files they copy to `/` |
-| `extras/src/` | sources of the prebuilt IRIX n32 libraries in `extras/target` (built with the SGUG gcc, `-shared -fPIC -static-libgcc`; see [docs/irix-gcc.md](docs/irix-gcc.md)) |
+| `install-extras.sh`, `extras/target/` | optional desktop / IRIS GL / audio extras, and the files they copy to `/` |
+| `extras/src/` | sources of the prebuilt IRIX n32 libraries in `extras/target` (built with the SGUG gcc, `-shared -fPIC -static-libgcc`; see [docs/irix-gcc.md](docs/irix-gcc.md)), and of `libRCAudio.so`, which `install-extras.sh` builds |
 | `install-demos.sh`, `irix-dist-extract.py` | optional IRIX demos; the extractor is also used by `install-extras.sh` |
-| `docs/` | notes: IRIX desktop, IRIS GL, IRIX gcc, QuickTransit internals |
+| `docs/` | notes: IRIX desktop, IRIS GL, IRIX audio, IRIX gcc, QuickTransit internals |
 
 
 ## What the install puts on the system
@@ -178,6 +180,11 @@ Added or changed by `install-extras.sh` (all removed by `uninstall.sh` too):
   path `/usr/QuickTransit/lib32`): IRIX preload libraries
 - `/usr/QuickTransit/etc/QuickTransit.conf`: an `FU_RLDN32_LIST` line that
   preloads `libfakeci.so` and `libglxsync.so` into every IRIX n32 program
+- `/irix/usr/lib32/libaudio.so.1`: the kit's libaudio (also kept in
+  `/usr/QuickTransit/lib/irix/lib32/libaudio.so`). SGI's is kept as
+  `libaudio.so.1.sgi`.
+- `/usr/QuickTransit/lib/ia64/libRCAudio.so`: its native ALSA half, built
+  from `extras/src/irixaudio/rcaudio.c`
 - `/etc/services`: `portmapper rpcbind` aliases on the `sunrpc` lines. The
   original is kept as `services.pre-quicktransit`.
 - `/irix/etc/fam.conf` (replaces the RPM's symlink to the host's
@@ -291,6 +298,17 @@ E5. **IRIS GL** needs a colour-index visual. `libfakeci.so`, preloaded
    into every IRIX n32 program, emulates one in programs linked with IRIS
    GL and stays out of the way in all others. See [docs/iris-gl.md](docs/iris-gl.md).
 
+E6. **No audio.** SGI's libaudio drives the `hdsp` kernel driver, which
+   QuickTransit doesn't emulate (SDL's Irix audio driver crashed
+   QuickTransit). The kit's n32 `libaudio.so.1` implements the Audio
+   Library's output side and hands the samples to `libRCAudio.so`, a native
+   library, through QuickTransit's own native-call mechanism. That library
+   plays them through ALSA's `default` device (or `$QTAUDIO_DEVICE`). There
+   is no daemon and no per-program setup. Input, o32 and n64 aren't covered.
+   To play several programs at once, `default` has to mix (dmix is enough,
+   no sound server needed); a `plug` straight onto a `hw` device plays one
+   at a time. See [docs/irix-audio.md](docs/irix-audio.md).
+
 ## Known issues
 
 - **Performer multi-process mode hangs** (black window). QuickTransit
@@ -318,7 +336,9 @@ E5. **IRIS GL** needs a colour-index visual. `libfakeci.so`, preloaded
 - **No toolchest** binary in the IRIX environment RPM, and other desktop
   files are missing too; `install-extras.sh` installs them from IRIX media
   (E3).
-- **No audio** for IRIX programs: QuickTransit has no IRIX audio library
-  backend (`audiostate`: "This machine has no audio driver at all").
+- **No audio** for IRIX programs without `install-extras.sh`: QuickTransit
+  has no IRIX audio backend (`audiostate`: "This machine has no audio
+  driver at all"). With it, n32 programs play through ALSA (E6); there is
+  still no audio input, and o32/n64 programs have none.
 
 
