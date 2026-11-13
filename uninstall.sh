@@ -1,6 +1,6 @@
 #!/bin/sh
-# Remove everything install.sh and install-extras.sh put on the system.  Run
-# as root on it:
+# Remove everything install.sh, install-extras.sh and install-irix6530.sh put
+# on the system.  Run as root on it:
 #   ./uninstall.sh        (also installed as /usr/QuickTransit/uninstall.sh)
 set -x
 for e in irix32 irix64; do
@@ -11,7 +11,8 @@ done
 P='^/usr/QuickTransit/bin/QuickTransit'
 pkill -f "$P" && sleep 2
 pkill -KILL -f "$P" && sleep 1
-rm -f /etc/binfmt.d/quicktransit.conf /usr/bin/start4dwm-x11
+rm -f /etc/binfmt.d/quicktransit.conf /usr/bin/start4dwm-x11 /usr/bin/irix6530 \
+      /usr/bin/start4dwm-6530
 rm -f /usr/lib/libstdc++.so.5 /usr/lib/libunwind.so.1 /usr/lib/libunwind-ia64.so.1 \
       /usr/lib/libunwind-ia64.so /usr/lib/nptl/librt.so
 rmdir /usr/lib/nptl 2>/dev/null || true
@@ -22,4 +23,4 @@ if [ -f /etc/services.pre-quicktransit ]; then
     mv /etc/services.pre-quicktransit /etc/services
 fi
 rm -rf /etc/flexlm /etc/init.d/QuickTransit /usr/QuickTransit \
-       /usr/share/doc/QuickTransit-1.2.1 /irix
+       /usr/share/doc/QuickTransit-1.2.1 /irix /irix6530 /irix6530.old /irix6530.new

@@ -218,9 +218,33 @@ IRIX `rld` has no `RTLD_NEXT`. An interposer gets the real function with
 `dlopen("libGL.so", RTLD_LAZY)` plus `dlsym`.
 
 Other option names in the binary that look useful but haven't been tried:
-`FU_DUMP_STRACE`, `FU_DUMP_STRACE_FOR`, `FU_DUMP_STRACE_END` (syscall
-tracing), `TRACE_BLOCKS`, `DEBUGLOG`, `FU_DISABLE_LOGGING`, and
-`IRIX_GL*` / `FU_GL*_STRING` (strings reported to GL programs).
+`FU_DUMP_STRACE_FOR`, `FU_DUMP_STRACE_END` (syscall tracing), `TRACE_BLOCKS`,
+`DEBUGLOG`, `FU_DISABLE_LOGGING`, and `IRIX_GL*` / `FU_GL*_STRING` (strings
+reported to GL programs). `FU_DUMP_STRACE=y` has been used: it dumps the
+recent syscalls into the `trlog` crash report.
+
+## IRIX root
+
+Two config options (defaults from `setDefaultConfigValues()`) say where the
+IRIX tree is:
+
+| Option | Default | What |
+|---|---|---|
+| `FU_IRIX_ROOT` | `/irix` | root of the IRIX world: IRIX paths are looked up under it; the working directory must be visible from it ("...which is not visible from the irix world rooted at") |
+| `FE_INTERPRETER_FSROOT` | `/irix` | where the program's ELF interpreter (`PT_INTERP`, `/usr/lib32/libc.so.1` on IRIX, which then loads `rld`) is mapped from |
+
+They are separate: with only `FU_IRIX_ROOT` changed, programs get `rld` and
+their libraries from the new tree but `libc.so.1` from `/irix`
+(`/proc/<pid>/maps` shows it). QuickTransit exports the root to the guest
+as `DYNAMITE_IRIX_ROOT`; setting that variable yourself changes nothing.
+`FU_PLATFORM_RELEASEREVNAME` sets what follows "6.5." in `uname -R`
+(default `27m`). [irix-6530.md](irix-6530.md) runs a second IRIX tree with
+these.
+
+Symlinks inside the IRIX tree are followed by the host kernel, so an
+absolute target is resolved against the host's `/`, not the IRIX root.
+QuickTransit's own `/irix` uses relative links, plus absolute ones on
+purpose for `/home`, `/root`, `/tmp`, `/mnt`, `/etc/passwd` and the like.
 
 ## ELF loader
 
