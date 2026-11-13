@@ -51,8 +51,9 @@ in 2005, with only the fixes today's kernel, glibc and X server need. It can
 be re-run safely (re-run `install-extras.sh` afterwards if you use it). To
 remove everything: `./uninstall.sh` (a copy is also left at
 `/usr/QuickTransit/uninstall.sh`). It stops all IRIX programs and deletes
-all of `/irix`, including anything added to it later (SGUG, IRIX headers;
-see [docs/irix-gcc.md](docs/irix-gcc.md)), so back those up first.
+all of `/irix` (and `/irix6530`, if installed), including anything added
+to it later (SGUG, IRIX headers; see [docs/irix-gcc.md](docs/irix-gcc.md)),
+so back those up first.
 
 ### Optional: extras (IRIX desktop, fam, IRIS GL, audio, demos)
 
@@ -95,6 +96,27 @@ database.
 What it does and why: [Extras](#extras-install-extrassh) below, and
 [docs/irix-desktop.md](docs/irix-desktop.md).
 
+### Optional: IRIX 6.5.30 with the development tools (`install-irix6530.sh`)
+
+`install-irix6530.sh` installs every product on a set of IRIX CDs into a
+second IRIX root, `/irix6530`, the way `inst` would: Foundation, the 6.5.30
+overlays, Applications, Development Foundation and Libraries, and the
+MIPSpro 7.4 C and C++ compilers. `/irix` stays as it is. Run it after
+`install.sh` (and `install-extras.sh`, for the desktop), giving each CD once,
+as a tar archive or a directory:
+
+    ./install-irix6530.sh "IRIX 6.5 Foundation 1.tar.gz" ... \
+        "MIPSpro C Compiler 7.4.tar" "MIPSpro C++ Compiler 7.4.tar"
+    irix6530 uname -aR             # IRIX64 <host> 6.5 07141529 IP30 6.5 6.5.30m
+    irix6530 cc -o hello hello.c   # MIPSpro 7.4, in the 6.5.30 tree
+    irix6530                       # IRIX shell in the 6.5.30 tree
+    start4dwm-6530                 # the desktop session from the 6.5.30 tree
+
+It takes about 35 minutes and 5.3 GB. `irix6530` runs IRIX programs with
+a QuickTransit config whose IRIX root is `/irix6530`. The CD list, how the
+products are merged, and what works (MIPSpro C/C++ without a license at up
+to `-O2`; Fortran doesn't): [docs/irix-6530.md](docs/irix-6530.md).
+
 ## Using it
 
     modprobe amdgpu                       # if your GPU driver isn't loaded
@@ -127,6 +149,8 @@ IRIX programs can't run from `/tmp`: T2 mounts it `noexec`, and
 QuickTransit maps IRIX executables with execute permission.
 
 More documentation:
+- [docs/irix-6530.md](docs/irix-6530.md): IRIX 6.5.30 and the MIPSpro
+  compilers as a second IRIX root (`install-irix6530.sh`)
 - [docs/irix-gcc.md](docs/irix-gcc.md): compiling IRIX programs with the
   SGUG gcc under QuickTransit
 - [docs/irix-desktop.md](docs/irix-desktop.md): running the IRIX desktop
@@ -148,8 +172,9 @@ More documentation:
 | `install-extras.sh`, `extras/target/` | optional desktop / IRIS GL / audio extras, and the files they copy to `/` |
 | `extras/src/` | sources of the prebuilt IRIX n32 libraries in `extras/target` (built with the SGUG gcc, `-shared -fPIC -static-libgcc`; see [docs/irix-gcc.md](docs/irix-gcc.md)), and of `libRCAudio.so`, which `install-extras.sh` builds |
 | `patch-sdl2-x11.py` | makes an SGUG SDL2 program or libSDL2 use QuickTransit's hooked X11 ([docs/sdl2.md](docs/sdl2.md)) |
-| `irix-dist-extract.py` | unpacks IRIX `inst` products; used by `install-extras.sh` |
-| `docs/` | notes: IRIX desktop, IRIS GL, IRIX audio, SDL2, IRIX gcc, QuickTransit internals |
+| `install-irix6530.sh` | optional IRIX 6.5.30 tree in `/irix6530` with the development tools ([docs/irix-6530.md](docs/irix-6530.md)) |
+| `irix-dist-extract.py` | unpacks IRIX `inst` products; used by `install-extras.sh` (one product) and `install-irix6530.sh` (`--install`: everything on the CDs) |
+| `docs/` | notes: IRIX 6.5.30 tree, IRIX desktop, IRIS GL, IRIX audio, SDL2, IRIX gcc, QuickTransit internals |
 
 
 ## What the install puts on the system

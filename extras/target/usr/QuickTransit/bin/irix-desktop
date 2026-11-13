@@ -7,12 +7,21 @@
 #
 # Starts rpcbind and fam if needed.  Returns at toolchest Desktop > Log Out,
 # which ends a startx session.
+#
+# IRIX_ROOT picks another IRIX tree than /irix (start4dwm-6530 sets it to
+# /irix6530, with DYNAMITE_CONFIG_FILE naming that tree's QuickTransit
+# config).
+R=${IRIX_ROOT:-/irix}
 pgrep -x rpcbind >/dev/null || rpcbind
 # fam (RPC program 391002).  rpcbind keeps the registration of a fam that
-# was killed, so look for the process and drop a stale registration.
-if ! pgrep -f '^/usr/QuickTransit/bin/QuickTransit .*/irix/usr/etc/fam( |$)' >/dev/null; then
+# was killed, so look for the process and drop a stale registration.  fam
+# looks up the paths it is asked to watch in its own IRIX tree, so a fam
+# running in another tree is replaced.
+QTFAM='^/usr/QuickTransit/bin/QuickTransit .*/usr/etc/fam( |$)'
+if ! pgrep -f "^/usr/QuickTransit/bin/QuickTransit .*$R/usr/etc/fam( |\$)" >/dev/null; then
+    pkill -f "$QTFAM" && sleep 1
     rpcinfo -d 391002 2 2>/dev/null
-    setsid /irix/usr/etc/fam -f </dev/null >/dev/null 2>&1 &
+    setsid $R/usr/etc/fam -f </dev/null >/dev/null 2>&1 &
     for i in $(seq 20); do
         rpcinfo -p localhost 2>/dev/null | grep -q sgi_fam && break
         sleep 0.5
@@ -32,7 +41,7 @@ cleanup() {
     pids=
     for p in $(pgrep -f '^/usr/QuickTransit/bin/QuickTransit '); do
         case "$(tr '\0' ' ' < /proc/$p/cmdline 2>/dev/null)" in
-            *' /irix/usr/etc/fam '*) continue ;;
+            *'/usr/etc/fam '*) continue ;;
         esac
         tr '\0' '\n' < /proc/$p/environ 2>/dev/null |
             grep -qE "^DISPLAY=$D(\.[0-9]+)?\$" && pids="$pids $p"
@@ -50,5 +59,5 @@ trap 'exit 1' HUP INT TERM
 # "exec reaper", which sets _SGI_SESSION_PROPERTY on the root window and
 # exits.  Log Out (endsession) removes it; IRIX xdm then ends the session,
 # and so does this script.
-/irix/bin/sh /var/X11/xdm/Xsession.dt </dev/null
-/irix/bin/sh -c '/usr/bin/X11/xprop -root -exists _SGI_SESSION_PROPERTY' >/dev/null
+$R/bin/sh /var/X11/xdm/Xsession.dt </dev/null
+$R/bin/sh -c '/usr/bin/X11/xprop -root -exists _SGI_SESSION_PROPERTY' >/dev/null
